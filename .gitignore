@@ -24,3 +24,7 @@ docs/design/prototype/
 
 # Jarvis local config (limits, repo); example is committed
 jarvis.config.json
+
+# VitePress
+docs/.vitepress/cache/
+docs/.vitepress/dist/
