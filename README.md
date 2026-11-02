@@ -11,6 +11,7 @@ Status: proof of concept, specification stage.
 - How it is built: [`docs/architecture/README.md`](docs/architecture/README.md), decisions in [`docs/decisions/architecture/`](docs/decisions/architecture/README.md)
 - Webinar concept: [`docs/webinar/webinar-concept.md`](docs/webinar/webinar-concept.md)
 - UI brief for design: [`docs/specs/web-ui-design.md`](docs/specs/web-ui-design.md)
+- Docs site: https://burnjohn.github.io/jarvis-agent/ (`pnpm docs:dev` to preview locally)
 
 ## Run it
 
