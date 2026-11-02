@@ -18,3 +18,4 @@ supersedes the old one.
 | [0011](0011-agent-definition-as-plugin-and-jarvis-home.md) | Ship the agent definition as a plugin in agent/; keep personal and runtime data in ~/.jarvis | proposed | agent/**, engine/src/infrastructure/claude/**, engine/src/infrastructure/config/** |
 | [0012](0012-react-vite-spa-with-css-modules-and-tanstack-query.md) | Build the web app as a React 19 + Vite SPA with react-router, CSS Modules and TanStack Query fed by SSE | proposed | web/** |
 | [0013](0013-test-with-vitest-real-postgres-and-a-fake-claude-binary.md) | Test with Vitest/RTL, real Postgres, Playwright and a fake `claude` binary | proposed | tests, engine/test/**, web/e2e/** |
+| [0014](0014-docs-site-with-vitepress-on-github-pages.md) | Publish docs/ as a VitePress site on GitHub Pages | proposed | docs/.vitepress/**, .github/workflows/docs.yml |
