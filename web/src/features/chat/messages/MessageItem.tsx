@@ -1,4 +1,5 @@
 import type { MessageDto } from '@jarvis/shared';
+import { useCanMutate, useSendNow } from '../../../api/queries';
 import { Markdown } from '../../../components/Markdown';
 import styles from './Card.module.css';
 import { DecisionCard } from './DecisionCard';
@@ -7,6 +8,7 @@ import { QuestionCard } from './QuestionCard';
 import { ResultCard } from './ResultCard';
 import { StatusCard } from './StatusCard';
 import type { MessageOf } from './types';
+import { formatMessageTime } from './messageTime';
 
 interface MessageItemProps {
   message: MessageDto;
@@ -36,8 +38,31 @@ export function OwnerBubble({
             Retry
           </button>
         ) : null}
+        {delivery === 'queued' && message.taskId !== null ? (
+          <SendNowButton messageId={message.id} />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * The message waits for its task's worker, which is not running: hand it to the dispatcher now,
+ * the way Claude Code lets a queued message through.
+ */
+function SendNowButton({ messageId }: { messageId: string }) {
+  const canMutate = useCanMutate();
+  const sendNow = useSendNow();
+  return (
+    <button
+      type="button"
+      className={styles.button}
+      title="The task's worker is not running. Hand this message to the dispatcher, which answers now."
+      disabled={!canMutate || sendNow.isPending}
+      onClick={() => sendNow.mutate(messageId)}
+    >
+      Send now
+    </button>
   );
 }
 
@@ -53,7 +78,22 @@ export function SystemCard({ text }: { text: string }) {
 
 const SOURCE_LABEL = { ci: 'CI', review: 'Review' } as const;
 
-export function MessageItem({ message, cancelled, onRetry }: MessageItemProps) {
+/** Every message carries the time it was posted: the owner must see when things happened. */
+export function MessageItem(props: MessageItemProps) {
+  const { message } = props;
+  const own = message.kind === 'owner' && message.body.source === 'owner';
+  const time = formatMessageTime(message.createdAt);
+  return (
+    <div className={own ? styles.entryOwn : styles.entry}>
+      <MessageBody {...props} />
+      <time className={styles.time} dateTime={message.createdAt} title={time.full}>
+        {time.short}
+      </time>
+    </div>
+  );
+}
+
+function MessageBody({ message, cancelled, onRetry }: MessageItemProps) {
   switch (message.kind) {
     case 'owner': {
       const source = message.body.source;
