@@ -13,7 +13,9 @@
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card), 0 0 48px var(--color-glow-soft);
+  box-shadow:
+    var(--shadow-card),
+    0 0 48px var(--color-glow-soft);
 }
 
 .row {
