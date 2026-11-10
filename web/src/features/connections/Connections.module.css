@@ -7,7 +7,8 @@
 
 .title {
   margin: 0;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-xl);
+  font-weight: 650;
 }
 
 .list {
@@ -28,7 +29,8 @@
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .inactive {
@@ -42,7 +44,8 @@
 }
 
 .status {
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
 .ok {

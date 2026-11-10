@@ -11,7 +11,11 @@
 
 .sectionTitle {
   margin: 0;
-  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
 }
 
 .muted {
@@ -28,12 +32,14 @@
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .budgetValue {
   margin: 0;
-  font-size: var(--font-size-lg);
+  font-size: 1.75rem;
+  letter-spacing: -0.03em;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -54,7 +60,9 @@
 
 .pill {
   padding: var(--space-1) var(--space-3);
-  color: var(--color-text);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
