@@ -1,4 +1,13 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { PUBLISHED_DIRS, STATIC_FILES, repoToContentPath } from './sections';
 
@@ -14,7 +23,9 @@ export interface AssembleOptions {
 /**
  * Builds the site's source folder from the published parts of docs/ (ADR-0029). Files are copied
  * byte for byte; docs/ is only read. A section README.md becomes the section's index.md, static
- * files (overview.html) go to `public/` so VitePress serves them untouched.
+ * files (overview.html) go to `public/` so VitePress serves them as they are, except that a static page
+ * with `<pre class="mermaid">` blocks gets the site's Mermaid script appended
+ * (the source relies on its viewer to draw them).
  * Returns the content paths of the pages written.
  */
 export function assemble({ repoRoot, contentDir, homePage }: AssembleOptions): string[] {
@@ -33,8 +44,14 @@ export function assemble({ repoRoot, contentDir, homePage }: AssembleOptions): s
 
   for (const repoPath of STATIC_FILES) {
     const source = join(repoRoot, repoPath);
-    if (existsSync(source))
-      copy(source, join(contentDir, 'public', posix.relative('docs', repoPath)));
+    if (!existsSync(source)) continue;
+    const target = join(contentDir, 'public', posix.relative('docs', repoPath));
+    copy(source, target);
+    const html = readFileSync(target, 'utf8');
+    if (html.includes('class="mermaid"')) {
+      const depth = posix.relative('docs', repoPath).split('/').length - 1;
+      writeFileSync(target, html + mermaidScript(`${'../'.repeat(depth)}vendor/mermaid.min.js`));
+    }
   }
 
   copy(homePage, join(contentDir, 'index.md'));
@@ -58,4 +75,13 @@ export function listFiles(repoRoot: string, dir: string): string[] {
 function copy(from: string, to: string): void {
   mkdirSync(dirname(to), { recursive: true });
   cpSync(from, to);
+}
+
+/** Draws a static page's `<pre class="mermaid">` blocks with the site's copy of Mermaid. */
+export function mermaidScript(src: string): string {
+  return (
+    `\n<script src="${src}"></script>\n` +
+    '<script>mermaid.initialize({ startOnLoad: true, securityLevel: "strict", ' +
+    'theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });</script>\n'
+  );
 }

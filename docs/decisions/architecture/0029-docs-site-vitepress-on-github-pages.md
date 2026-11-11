@@ -40,7 +40,7 @@ Docusaurus parses Markdown as MDX, which breaks on the plain `<...>` text the do
   Rollup ran out of memory on the 4 GB server.
 - **The site is assembled, not authored.** When the config loads, it copies the three published sections
   into the git-ignored `docs-site/content/` and adds the site's own home page. A section's `README.md` is its
-  landing page. `docs/architecture/overview.html` is served as a static file. Nothing in `docs/` is
+  landing page. `docs/architecture/overview.html` is served as a static file. Its diagrams need a script, so the site copy gets the Mermaid script appended. Nothing in `docs/` is
   edited for the site.
 - **Reads the same as on GitHub.** YAML front matter is shown as a table above the page, as GitHub does.
   A relative link to an existing repository file that is not published (`STATUS.md`, `deploy/README.md`)

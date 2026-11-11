@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assemble, listFiles } from '../lib/assemble';
@@ -37,6 +37,23 @@ describe('assemble', () => {
     );
     const after = listFiles(repo, 'docs').map((p) => [p, readFileSync(join(repo, p), 'utf8')]);
     expect(after).toEqual(before);
+  });
+
+  it('appends the Mermaid script to a static page with diagrams, and only to its site copy', () => {
+    const repo = makeRepo();
+    const contentDir = join(repo, 'site-content');
+    assemble({ repoRoot: repo, contentDir, homePage: join(repo, 'home.md') });
+    expect(readFileSync(join(contentDir, 'public/architecture/overview.html'), 'utf8')).toBe(
+      '<html></html>',
+    );
+
+    const source = '<pre class="mermaid">flowchart LR</pre>';
+    writeFileSync(join(repo, 'docs/architecture/overview.html'), source);
+    assemble({ repoRoot: repo, contentDir, homePage: join(repo, 'home.md') });
+    const site = readFileSync(join(contentDir, 'public/architecture/overview.html'), 'utf8');
+    expect(site.startsWith(source)).toBe(true);
+    expect(site).toContain('<script src="../vendor/mermaid.min.js"></script>');
+    expect(readFileSync(join(repo, 'docs/architecture/overview.html'), 'utf8')).toBe(source);
   });
 
   it('starts from an empty folder on every run', () => {
