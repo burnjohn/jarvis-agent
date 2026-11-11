@@ -33,9 +33,11 @@ search with no external account; and its build fails on a dead link. MkDocs need
 Docusaurus parses Markdown as MDX, which breaks on the plain `<...>` text the docs contain, and brings React.
 
 - **Package `docs-site/`** (`@jarvis/docs-site`). Dependencies, pinned exactly: `vitepress` 1.6.4 and
-  `mermaid` 12.3.0, plus `vitest` and `typescript` at the versions the other packages use. No
+  `mermaid` 12.3.0, plus `vitest`, `typescript` and `@types/node` at the versions the other packages use. No
   Mermaid plugin: `vitepress-plugin-mermaid` 2.0.17 requires mermaid 10 or 11. A fence renderer and a
-  few lines of theme code render the diagrams with `mermaid` in the browser.
+  few lines of theme code render the diagrams in the browser, using mermaid's prebuilt `mermaid.min.js`. The
+  build copies that file to the site, and only a page with a diagram loads it. Bundling mermaid through
+  Rollup ran out of memory on the 4 GB server.
 - **The site is assembled, not authored.** When the config loads, it copies the three published sections
   into the git-ignored `docs-site/content/` and adds the site's own home page. A section's `README.md` is its
   landing page. `docs/architecture/overview.html` is served as a static file. Nothing in `docs/` is
@@ -43,7 +45,9 @@ Docusaurus parses Markdown as MDX, which breaks on the plain `<...>` text the do
 - **Reads the same as on GitHub.** YAML front matter is shown as a table above the page, as GitHub does.
   A relative link to an existing repository file that is not published (`STATUS.md`, `deploy/README.md`)
   is rewritten to that file on GitHub, branch `main`. A relative link to a file that does not exist is left as
-  it is, so the dead-link check fails the build.
+  it is, so the dead-link check fails the build. Raw HTML in Markdown is shown as text, not rendered. The
+  docs use none, but they write placeholders such as `<artifactsDir>` in plain text, and as HTML those
+  break the page.
 - **Address** `https://burnjohn.github.io/jarvis-agent/` (base `/jarvis-agent/`), no custom domain.
 - **Workflow `.github/workflows/docs.yml`** (`name: docs`): job `build` runs on every pull request to
   `main` and on every push to `main` (tests, then build). Job `deploy` runs only on a push to `main` and
