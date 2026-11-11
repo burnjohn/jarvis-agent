@@ -98,7 +98,9 @@
 .profile {
   align-self: stretch;
   max-height: 20rem;
-  overflow: hidden;
+  /* Clamped in height only: a wide table or code line still scrolls sideways. */
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: var(--space-2) var(--space-3);
   background: var(--color-surface-muted);
   border-radius: var(--radius-sm);
