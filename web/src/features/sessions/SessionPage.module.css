@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: var(--space-3);
   height: 100%;
-  padding: var(--space-6) var(--page-pad);
+  padding: var(--space-4);
   overflow-y: auto;
 }
 
@@ -15,7 +15,8 @@
 
 .title {
   margin: 0;
-  font-size: clamp(2rem, 1.4rem + 2vw, 3rem);
+  font-size: var(--font-size-xl);
+  font-weight: 650;
 }
 
 .facts {

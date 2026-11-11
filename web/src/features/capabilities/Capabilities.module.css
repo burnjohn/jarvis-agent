@@ -1,12 +1,13 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-7);
-  padding: var(--space-7) var(--page-pad) var(--space-8);
+  gap: var(--space-4);
+  padding: var(--space-5);
 }
 
 .title {
   margin: 0;
+  font-size: var(--font-size-lg);
 }
 
 .intro {
@@ -29,12 +30,7 @@
 
 .sectionTitle {
   margin: 0;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  font-weight: var(--font-weight-medium);
-  letter-spacing: var(--letter-spacing-caps);
-  text-transform: uppercase;
+  font-size: var(--font-size-md);
 }
 
 .list {
@@ -52,7 +48,7 @@
   gap: var(--space-3);
   align-items: flex-start;
   justify-content: space-between;
-  padding: var(--space-5);
+  padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -138,7 +134,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);

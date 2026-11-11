@@ -17,7 +17,11 @@ html {
 
 body {
   margin: 0;
-  background: var(--color-bg);
+  background:
+    radial-gradient(1200px 520px at 18% -12%, var(--color-glow), transparent 60%),
+    radial-gradient(900px 480px at 100% 0%, var(--color-glow-soft), transparent 55%),
+    var(--color-bg);
+  background-attachment: fixed;
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--font-size-md);
@@ -37,26 +41,20 @@ h4 {
   letter-spacing: -0.02em;
 }
 
-/* Page titles are set in the display serif: large, light, tight. User-written titles (threads,
-   tasks) opt out in their own module because the serif has no Cyrillic. */
 h1 {
-  font-family: var(--font-display);
-  font-size: var(--font-size-2xl);
-  font-weight: 400;
-  letter-spacing: -0.02em;
-  line-height: 1;
+  font-size: var(--font-size-xl);
+  font-weight: 650;
 }
 
 a {
-  color: var(--color-text);
-  text-decoration-color: var(--color-accent);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
+  color: var(--color-accent);
+  text-decoration-color: var(--color-accent-subtle);
+  text-underline-offset: 3px;
   transition: color var(--duration-fast) var(--ease-out);
 }
 
 a:hover {
-  color: var(--color-accent);
+  color: var(--color-accent-hover);
   text-decoration-color: currentcolor;
 }
 

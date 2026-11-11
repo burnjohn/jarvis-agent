@@ -1,49 +1,32 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-7);
-  padding: var(--space-7) var(--page-pad) var(--space-8);
+  gap: var(--space-5);
+  padding: var(--space-5);
 }
 
 .title {
   margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 650;
 }
 
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
-  border-block: 1px solid var(--color-border);
 }
 
-.kpi {
-  gap: var(--space-3);
-  padding: var(--space-5) var(--space-5) var(--space-5) 0;
-}
-
-@media (min-width: 72rem) {
-  .kpis {
-    grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.8fr);
-  }
-}
-
-.kpi + .kpi {
-  padding-inline-start: var(--space-5);
-  border-inline-start: 1px solid var(--color-border);
-}
-
+.kpi,
 .card {
-  padding: var(--space-5);
+  padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  transition: border-color var(--duration-base) var(--ease-out);
-}
-
-.card:hover {
-  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-card);
 }
 
 .card {
@@ -60,42 +43,39 @@
 .kpiLabel {
   order: -1;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--letter-spacing-caps);
   text-transform: uppercase;
 }
 
 .kpiValue {
-  font-family: var(--font-display);
-  font-size: var(--font-size-stat);
-  font-weight: 400;
+  font-size: var(--font-size-xl);
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  line-height: 1;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-2);
 }
 
 .sectionTitle {
   margin: 0;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: var(--letter-spacing-caps);
   text-transform: uppercase;
 }
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--space-3);
 }
 
 .cardTitle {
@@ -141,9 +121,8 @@
 
 .table th {
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: var(--letter-spacing-caps);
   text-transform: uppercase;
   background: var(--color-surface-raised);

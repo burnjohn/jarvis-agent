@@ -299,29 +299,27 @@ A row per connection: name, status (`Connected`, `Not configured`, `Error`), det
 
 ## Visual language
 
-Decided in T-3 (2026-11-10, revised 2026-11-11 at the owner's request for a less generic,
-"CSS Awards"-style look); the direction was worked out with the ui-ux-pro-max skill (bold editorial
-typography over a dark operations console). Values live only in `web/src/styles/tokens.css`.
+Decided in T-3 (2026-11-10) with the owner; the design system was picked with the ui-ux-pro-max skill
+(style "Dark Mode", pattern "Real-Time / Operations"). Values live only in `web/src/styles/tokens.css`.
 
-- **Theme.** Dark only (`color-scheme: dark`): a warm near-black page, no gradients or glows.
-- **Structure.** Hairline rules instead of shadows; flat panels one step above the page; small radii
-  (3–6 px). Generous space: page padding scales with the viewport (`--page-pad`), sections are
-  separated by large vertical gaps.
-- **Accent.** One acid lime (`--color-accent`) with near-black text on it: the primary action, the
-  active nav bar and icon, focus, link underlines and the `PR Open` stage.
-- **Status colours.** Mint, amber, coral and blue on dark tints, and a separate hue per task stage.
-  Colour never carries meaning alone: badges, check status, connection and session status keep their
-  symbol and word.
-- **Contrast.** Text and status text ≥ 4.5:1 on every surface they sit on; focus ring, strong border
-  and accent indicator ≥ 3:1 (WCAG 2.1 AA).
-- **Type.** Three voices, all self-hosted woff2 under `web/public/fonts`:
-  Instrument Serif for page titles, the wordmark and KPI figures (Latin only, so user-written titles
-  stay in Inter); Inter for the interface; JetBrains Mono for IDs, code and the small uppercase
-  labels (section titles, table headers, filters).
+- **Theme.** Dark only (`color-scheme: dark`). No light theme or switch.
+- **Surfaces.** Deep slate background, then `surface` (panels, nav, tables), `surface-raised` (message
+  cards, dialogs, menus), `surface-muted`/`surface-hover` (inputs, hover). Hairline borders; a soft card
+  shadow; a faint indigo glow at the top of the page.
+- **Accent.** Indigo (`--color-accent`), with dark text on accent buttons. It marks the primary action,
+  the active nav item, the current thread and focus.
+- **Status colours.** Desaturated green, amber, red and blue on dark tints, and a separate hue per task
+  stage. Colour never carries meaning alone: the stage badge, check status, connection state and session
+  status keep their symbol and word.
+- **Contrast.** Text and status text ≥ 4.5:1 on every surface they sit on; focus ring, strong border and
+  accent indicator ≥ 3:1 (WCAG 2.1 AA).
+- **Type.** Inter (interface) and JetBrains Mono (IDs, SHAs, code, event labels), self-hosted as variable
+  woff2 (Latin + Cyrillic) under `web/public/fonts`; tabular figures in tables. Section labels and table
+  headers are small uppercase with wide tracking.
 - **Icons.** One set: Lucide outlines (ISC) in `web/src/components/Icon.tsx`, 1.75 stroke, 14/16/20 px.
   Every nav item has an icon and its name; icons are decorative unless given a label.
-- **Motion.** 120–200 ms ease-out on hover, focus and state changes; a small entrance for message cards
-  and dialogs; everything is cut to near zero under `prefers-reduced-motion`.
+- **Motion.** 120–180 ms ease-out on hover, focus and state changes; small entrance for message cards and
+  dialogs; everything is cut to near zero under `prefers-reduced-motion`.
 
 ## Open design questions
 
