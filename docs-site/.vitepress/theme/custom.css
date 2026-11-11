@@ -1,0 +1,15 @@
+/* Front matter table above a page, as GitHub shows it (ADR-0029). */
+.vp-doc table.frontmatter {
+  font-size: 0.85em;
+  margin-top: 0;
+}
+
+.vp-doc table.frontmatter table {
+  margin: 0;
+}
+
+/* Mermaid diagrams: no code-block background once drawn. */
+.vp-doc pre.mermaid {
+  background: transparent;
+  text-align: center;
+}

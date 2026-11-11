@@ -28,3 +28,8 @@ jarvis.config.json
 # Subagent-driven-development scratch (ledger, briefs, review packages)
 .superpowers/
 !web/.env.remote.example
+
+# Docs site: assembled content and build output (ADR-0029)
+docs-site/content/
+docs-site/.vitepress/cache/
+docs-site/.vitepress/dist/
