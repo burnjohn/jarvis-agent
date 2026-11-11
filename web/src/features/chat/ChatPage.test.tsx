@@ -161,17 +161,19 @@ describe('thread list', () => {
     first.unmount();
 
     renderChat('/chat', {});
-    expect(
-      await screen.findByRole('separator', { name: 'Resize thread list' }),
-    ).toHaveAttribute('aria-valuenow', '336');
+    expect(await screen.findByRole('separator', { name: 'Resize thread list' })).toHaveAttribute(
+      'aria-valuenow',
+      '336',
+    );
   });
 
   it('falls back to the default width when the stored one is invalid', async () => {
     window.localStorage.setItem('jarvis.chat.threadListWidth', '"wide"');
     renderChat('/chat', {});
-    expect(
-      await screen.findByRole('separator', { name: 'Resize thread list' }),
-    ).toHaveAttribute('aria-valuenow', '304');
+    expect(await screen.findByRole('separator', { name: 'Resize thread list' })).toHaveAttribute(
+      'aria-valuenow',
+      '304',
+    );
   });
 });
 
@@ -211,6 +213,17 @@ describe('new thread', () => {
 });
 
 describe('composer', () => {
+  it('keeps the field, the hint and Send in one frame with Send last', async () => {
+    openThread([]);
+    const box = await screen.findByRole('textbox', { name: 'Message' });
+    const frame = box.parentElement as HTMLElement;
+    const hint = within(frame).getByText('Enter — send, Shift+Enter — new line');
+    const send = within(frame).getByRole('button', { name: 'Send' });
+    expect(hint.parentElement).toBe(send.parentElement);
+    expect(send.parentElement?.lastElementChild).toBe(send);
+    expect(box.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('sends on Enter and inserts a newline on Shift+Enter', async () => {
     const user = userEvent.setup();
     const { spy } = openThread([]);

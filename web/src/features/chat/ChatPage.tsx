@@ -7,11 +7,7 @@ import { NewThread } from './NewThread';
 import { ResizeHandle } from './ResizeHandle';
 import { ThreadList } from './ThreadList';
 import { ThreadView } from './ThreadView';
-import {
-  THREAD_LIST_WIDTH,
-  THREAD_LIST_WIDTH_KEY,
-  parseThreadListWidth,
-} from './threadListWidth';
+import { THREAD_LIST_WIDTH, THREAD_LIST_WIDTH_KEY, parseThreadListWidth } from './threadListWidth';
 
 /** `/chat` and `/chat/:threadId`: thread list on the left, the open thread (or the new-thread prompt) beside it. */
 export function ChatPage() {
@@ -27,10 +23,7 @@ export function ChatPage() {
   const width = dragWidth ?? storedWidth;
 
   return (
-    <div
-      className={styles.page}
-      style={{ '--thread-list-width': `${width}px` } as CSSProperties}
-    >
+    <div className={styles.page} style={{ '--thread-list-width': `${width}px` } as CSSProperties}>
       <ThreadList
         id="thread-list"
         threads={threads.data}
