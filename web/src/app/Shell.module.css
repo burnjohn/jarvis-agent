@@ -9,18 +9,17 @@
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  min-height: 3.25rem;
-  padding: var(--space-2) var(--space-4);
-  background: var(--color-surface);
+  gap: var(--space-4);
+  min-height: 3.5rem;
+  padding: var(--space-2) var(--space-5);
+  background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
-  backdrop-filter: saturate(140%) blur(8px);
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .logo {
@@ -31,29 +30,33 @@
   color: var(--color-accent-contrast);
   background: var(--color-accent);
   border-radius: var(--radius-sm);
-  box-shadow: 0 0 18px var(--color-glow);
 }
 
+/* The wordmark: the display serif in italic, the one flourish of the shell. */
 .product {
-  font-size: var(--font-size-lg);
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 1.625rem;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1;
 }
 
 .local {
-  padding: 0.0625rem var(--space-2);
+  padding: 0.125rem var(--space-2);
   color: var(--color-text-muted);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: 0.6875rem;
   letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
 }
 
 .status {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-5);
   margin-inline-start: auto;
 }
 
@@ -68,8 +71,8 @@
   flex-direction: column;
   justify-content: space-between;
   width: var(--nav-width);
-  padding: var(--space-4) var(--space-3);
-  background: var(--color-surface);
+  padding: var(--space-6) var(--space-4) var(--space-5);
+  background: var(--color-bg);
   border-inline-end: 1px solid var(--color-border);
 }
 
@@ -80,7 +83,7 @@
 }
 
 .group + .group {
-  padding-top: var(--space-3);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--color-border);
 }
 
@@ -89,7 +92,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: 2.25rem;
+  min-height: 2.5rem;
   padding: var(--space-2) var(--space-3);
   color: var(--color-text-muted);
   border-radius: var(--radius-sm);
@@ -101,28 +104,27 @@
 }
 
 .linkIcon {
-  opacity: 0.85;
+  opacity: 0.8;
 }
 
 .link:hover {
   color: var(--color-text);
-  background: var(--color-surface-hover);
+  background: var(--color-surface-muted);
 }
 
 .active {
   color: var(--color-text);
-  background: var(--color-accent-subtle);
+  background: var(--color-surface-muted);
   font-weight: var(--font-weight-semibold);
 }
 
 /* The active item is marked by a bar and weight, not colour alone. */
 .active::before {
   position: absolute;
-  inset-block: 0.5rem;
-  inset-inline-start: calc(-1 * var(--space-3));
+  inset-block: 0.625rem;
+  inset-inline-start: calc(-1 * var(--space-4));
   width: 3px;
   background: var(--color-accent);
-  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   content: '';
 }
 
