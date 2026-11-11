@@ -72,6 +72,15 @@ describe('ResizeHandle', () => {
     expect(screen.getByLabelText('commits')).toHaveTextContent('');
     fireEvent.pointerUp(handle(), { pointerId: 1 });
     expect(screen.getByLabelText('commits')).toHaveTextContent(/^512$/);
+    expect(document.body.style.getPropertyValue('user-select')).toBe('');
+  });
+
+  it('gives the page its text selection back when unmounted mid-drag', () => {
+    const { unmount } = render(<Harness />);
+    fireEvent.pointerDown(handle(), { button: 0, clientX: 100, pointerId: 1 });
+    expect(document.body.style.getPropertyValue('user-select')).toBe('none');
+    unmount();
+    expect(document.body.style.getPropertyValue('user-select')).toBe('');
   });
 });
 

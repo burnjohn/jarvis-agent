@@ -224,6 +224,14 @@ describe('composer', () => {
     expect(box.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('puts the caret in the field when the hint area of the frame is clicked', async () => {
+    const user = userEvent.setup();
+    openThread([]);
+    const box = await screen.findByRole('textbox', { name: 'Message' });
+    await user.click(screen.getByText('Enter — send, Shift+Enter — new line'));
+    expect(box).toHaveFocus();
+  });
+
   it('sends on Enter and inserts a newline on Shift+Enter', async () => {
     const user = userEvent.setup();
     const { spy } = openThread([]);

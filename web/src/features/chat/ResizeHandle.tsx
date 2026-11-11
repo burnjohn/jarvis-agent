@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import styles from './ResizeHandle.module.css';
 
 interface ResizeHandleProps {
@@ -19,6 +19,11 @@ interface ResizeHandleProps {
 const STEP = 16;
 const BIG_STEP = 64;
 
+function releaseBody() {
+  document.body.style.removeProperty('user-select');
+  document.body.style.removeProperty('cursor');
+}
+
 /** A vertical splitter: drag it, use the arrow keys (Shift for bigger steps), Home/End, or double-click to reset. */
 export function ResizeHandle({
   label,
@@ -33,12 +38,14 @@ export function ResizeHandle({
   const drag = useRef<{ startX: number; startValue: number; last: number } | null>(null);
   const clamp = (next: number) => Math.round(Math.min(max, Math.max(min, next)));
 
+  // Leaving the page mid-drag must not leave the whole document unselectable.
+  useEffect(() => releaseBody, []);
+
   const endDrag = () => {
     const state = drag.current;
     if (!state) return;
     drag.current = null;
-    document.body.style.removeProperty('user-select');
-    document.body.style.removeProperty('cursor');
+    releaseBody();
     onCommit(state.last);
   };
 
