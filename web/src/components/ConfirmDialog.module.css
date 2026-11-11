@@ -3,6 +3,8 @@
   padding: var(--space-5);
   color: var(--color-text);
   background: var(--color-surface);
+  background-image: var(--glass-highlight);
+  backdrop-filter: var(--glass-blur);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-dialog);
