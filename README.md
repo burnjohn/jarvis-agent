@@ -7,7 +7,7 @@ watches CI and review until the PR is ready for a human merge.
 
 Status: proof of concept, specification stage.
 
-**Documentation site:** https://burnjohn.github.io/jarvis-agent/ (specifications, architecture and decisions; built from `docs/` on every push to `main`, ADR-0029)
+**Documentation site:** https://burnjohn.github.io/jarvis-agent/ (specifications, architecture and decisions; built from `docs/` by the `docs` workflow on every push to `main`, ADR-0029)
 
 - What it does: [`docs/specs/abstract-project-spec.md`](docs/specs/abstract-project-spec.md)
 - How it is built: [`docs/architecture/README.md`](docs/architecture/README.md), decisions in [`docs/decisions/architecture/`](docs/decisions/architecture/README.md)
