@@ -18,6 +18,12 @@ describe('resolveLink', () => {
     });
   });
 
+  it('leaves a link to a published folder to VitePress, missing or not', () => {
+    for (const href of ['../decisions/architecture/', '../decisions/nothing-here/']) {
+      expect(resolveLink(href, 'architecture/index.md', repo)).toEqual({ kind: 'keep', href });
+    }
+  });
+
   it('points a link to a section README at the section index page', () => {
     expect(
       resolveLink('../decisions/architecture/README.md', 'architecture/index.md', repo),
