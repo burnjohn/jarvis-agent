@@ -1,0 +1,20 @@
+/* Front matter table above a page, as GitHub shows it (ADR-0029). */
+.vp-doc table.frontmatter {
+  font-size: 0.85em;
+  margin-top: 0;
+}
+
+.vp-doc table.frontmatter table {
+  margin: 0;
+}
+
+/* Mermaid diagrams: no code-block background; the source is hidden until it is drawn (or fails). */
+.vp-doc pre.mermaid {
+  background: transparent;
+  text-align: center;
+}
+
+.vp-doc pre.mermaid:not([data-processed]):not([data-failed]) {
+  visibility: hidden;
+  min-height: 6rem;
+}

@@ -13,6 +13,8 @@ export default tseslint.config(
       '**/test-results/**',
       'engine/drizzle/**',
       'docs/**',
+      'docs-site/content/**',
+      'docs-site/.vitepress/cache/**',
       '.claude/**',
     ],
   },

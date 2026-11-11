@@ -2,3 +2,6 @@
 docs/
 engine/drizzle/meta/
 pnpm-lock.yaml
+docs-site/content/
+docs-site/.vitepress/cache/
+docs-site/.vitepress/dist/

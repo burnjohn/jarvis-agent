@@ -22,6 +22,7 @@ docs/specs/                  what and why: abstract spec, UI design brief, featu
 docs/architecture/           how it is built (README + overview.html)
 docs/decisions/architecture/ ADRs — technical decisions that constrain the code
 docs/webinar/                webinar concept the prototype is built for
+docs-site/                   public docs site (VitePress, GitHub Pages) built from docs/
 <module>/                    each package/app, once created (see Modules)
 ```
 
@@ -29,11 +30,12 @@ docs/webinar/                webinar concept the prototype is built for
 
 Add a row when a module is created.
 
-| Module | Path      | Purpose                                                              | Test command                        | Typecheck command                        |
-| ------ | --------- | -------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------- |
-| shared | `shared/` | Zod contracts shared by engine and web                               | `pnpm --filter @jarvis/shared test` | `pnpm --filter @jarvis/shared typecheck` |
-| engine | `engine/` | Fastify API, Drizzle/Postgres, runs `claude` (int tests: test:int, Docker, CI only) | `pnpm --filter @jarvis/engine test:unit` | `pnpm --filter @jarvis/engine typecheck` |
-| web    | `web/`    | React SPA (e2e: `pnpm --filter @jarvis/web e2e`)                     | `pnpm --filter @jarvis/web test`    | `pnpm --filter @jarvis/web typecheck`    |
+| Module    | Path         | Purpose                                                                                                             | Test command                             | Typecheck command                           |
+| --------- | ------------ | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------- |
+| shared    | `shared/`    | Zod contracts shared by engine and web                                                                              | `pnpm --filter @jarvis/shared test`      | `pnpm --filter @jarvis/shared typecheck`    |
+| engine    | `engine/`    | Fastify API, Drizzle/Postgres, runs `claude` (int tests: test:int, Docker, CI only)                                 | `pnpm --filter @jarvis/engine test:unit` | `pnpm --filter @jarvis/engine typecheck`    |
+| web       | `web/`       | React SPA (e2e: `pnpm --filter @jarvis/web e2e`)                                                                    | `pnpm --filter @jarvis/web test`         | `pnpm --filter @jarvis/web typecheck`       |
+| docs-site | `docs-site/` | VitePress docs site built from `docs/` (ADR-0029; build + dead-link check: `pnpm --filter @jarvis/docs-site build`) | `pnpm --filter @jarvis/docs-site test`   | `pnpm --filter @jarvis/docs-site typecheck` |
 
 ## Rules
 

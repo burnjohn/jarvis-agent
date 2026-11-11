@@ -178,6 +178,18 @@ From a security review of the 2026-11-10/11 changes (three High, five Medium, th
 - `main`'s history was rewritten on 2026-11-11 (a sensitive path removed); clones must
   `git fetch && git reset --hard origin/main`, and only `main` remains on GitHub.
 
+## Documentation site 2026-11-11 — on branch `jarvis/T-7`, not merged (ADR-0029)
+
+- `docs-site/` builds a VitePress site from `docs/specs`, `docs/architecture`, `docs/decisions` (never
+  `docs/plans`, `docs/webinar`, this file) with sidebar, local search, Mermaid and the interactive overview.
+- **Not in that PR: the workflow `docs` (`.github/workflows/docs.yml`).** The bot token has no `workflow`
+  scope, so it cannot push workflow files, and the owner adds the file separately. The workflow runs
+  `docs / build` on every PR (a dead link fails it) and deploys to https://burnjohn.github.io/jarvis-agent/
+  on every push to `main`. Until it lands, the site is neither link-checked on PRs nor deployed.
+- **Owner steps, once:** (M0) add `.github/workflows/docs.yml`; (M1) Settings → Pages → Source: GitHub Actions;
+  (M2) a rule on `main` requiring the `docs / build` check. Until M1 the deploy job fails; until M2 a red link
+  check does not block the merge.
+
 ## Deployed 2026-11-11 — repository-agnostic UI check (ADR-0026)
 
 - **The engine knows no target project**: the worker composes an environment plan from the target
