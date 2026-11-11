@@ -51,7 +51,9 @@ export function ResizeHandle({
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    // preventDefault stops text selection but also the default focus, so focus explicitly: keys work after a drag.
     event.preventDefault();
+    event.currentTarget.focus();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     drag.current = { startX: event.clientX, startValue: value, last: value };
     // Keep the drag from selecting text across the page.

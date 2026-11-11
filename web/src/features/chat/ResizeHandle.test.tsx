@@ -65,6 +65,7 @@ describe('ResizeHandle', () => {
   it('follows a pointer drag and commits once when it ends', () => {
     render(<Harness />);
     fireEvent.pointerDown(handle(), { button: 0, clientX: 100, pointerId: 1 });
+    expect(handle()).toHaveFocus();
     fireEvent.pointerMove(handle(), { clientX: 150, pointerId: 1 });
     expect(handle()).toHaveAttribute('aria-valuenow', '354');
     fireEvent.pointerMove(handle(), { clientX: 900, pointerId: 1 });
