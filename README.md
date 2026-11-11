@@ -1,16 +1,114 @@
 # Jarvis
 
-Personal AI development agent that runs on your laptop through your Claude Code subscription.
-You give it a task in its web chat (Slack threads in iteration 2); it gathers context (Claude Design, Notion, Google Docs, the repo),
-writes a spec and plan, implements the change, runs checks, reviews it, opens a draft PR and
-watches CI and review until the PR is ready for a human merge.
+**A personal AI development agent that takes a task from a chat message to a draft pull request.**
+It runs on your own machine (a laptop or a small VPS) through your Claude Code subscription: no API key,
+no hosted service.
 
-Status: proof of concept, specification stage.
+You describe a task in the web chat. Jarvis gathers context (the repository, Notion, Google Docs, a design
+handoff), writes a spec and waits for your approval, plans and implements the change in an isolated git
+worktree, runs the checks, has the result reviewed, and opens a **draft PR**. It then watches CI and review
+comments and fixes what they report, until the PR is ready for a human to merge. Jarvis never merges.
+
+**Slides:** [burnjohn.github.io/jarvis-agent](https://burnjohn.github.io/jarvis-agent/) — the webinar deck
+(in Ukrainian) that walks through the ten problems this design solves and the options that were rejected.
+
+Status: working prototype. One real task has gone end to end (chat → spec → plan → code → checks → review →
+draft PR); the current state and the gaps are in [`STATUS.md`](STATUS.md).
+
+## How it works
+
+The **engine** is a plain Node process that owns all state. Claude only thinks: it is started as
+`claude -p` for each owner message (the _dispatcher_) and for each task stage (the _worker_), and it can
+change state only through the tools of the engine's MCP server.
+
+```mermaid
+flowchart LR
+    owner([Owner])
+    gh[(GitHub: PRs, CI, reviews)]
+    src[(Notion, Google Docs, Claude Design)]
+    subgraph host[Your laptop or VPS]
+        web[Web app: chat + admin]
+        subgraph engine[Engine: Node + Fastify, no model inside]
+            api[HTTP API + SSE]
+            core[Stage machine, scheduler, limits]
+            mcp[Jarvis MCP server]
+            watcher[Watcher: polls GitHub]
+        end
+        pg[(Postgres)]
+        disp["claude -p dispatcher<br/>one session per thread"]
+        work["claude -p worker<br/>one task, own git worktree"]
+    end
+    owner --> web <--> api
+    api --> core --> pg
+    core -- spawns --> disp & work
+    disp & work -- tools --> mcp --> api
+    work -- read-only --> src
+    core -- checks, push, draft PR --> gh
+    watcher -- poll --> gh
+    watcher --> core
+```
+
+**Rule of the design:** the model never writes to the database or the config directly, and it has no GitHub
+token. The engine runs the checks itself and refuses to open a PR while they are red, so a red result
+cannot reach a pull request however the model words its report (ADR-0022).
+
+### A task, stage by stage
+
+```mermaid
+stateDiagram-v2
+    [*] --> Intake
+    Intake --> Context
+    Context --> SpecReview: spec and plan ready
+    SpecReview --> Implementing: owner approves
+    Implementing --> Verifying
+    Verifying --> Reviewing: checks green
+    Verifying --> Implementing: checks red
+    Reviewing --> PROpen: draft PR opened by the engine
+    PROpen --> Fixing: CI failed or review comment
+    Fixing --> PROpen
+    PROpen --> Done: CI green and approved
+    Implementing --> Blocked: needs the owner
+    Done --> [*]
+```
+
+(`SpecReview` is the stage `Spec Review`, `PROpen` is `PR Open`; a task can also end as `Failed` or
+`Cancelled`.)
+
+Each stage produces files in the task folder from the templates in [`agent/templates`](agent/templates)
+(`context.md`, `spec.md`, `plan.md`, `tasks.md`, `result.md`), so the work is reviewable at every step.
+
+## What is in it
+
+| Part                            | What it does                                                                                                                                                                       |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Engine** (`engine/`)          | Fastify API and SSE, Drizzle on Postgres, stage machine, scheduler of worker slots, token and cost limits, restart recovery. Onion architecture (ADR-0002).                        |
+| **Web app** (`web/`)            | React SPA: chat, tasks, run console with every stream event, usage, connections, config, and a Capabilities page for your own skills and subagents.                                |
+| **Agent definition** (`agent/`) | A Claude Code plugin: `SOUL.md` (role and rules), prompts, spec/plan templates, and five subagents: `context-researcher`, `plan-verifier`, `implementer`, `reviewer`, `ui-tester`. |
+| **Memory**                      | The agent writes what it learns about you into one file, `~/.jarvis/USER.md`, and you review it afterwards (ADR-0021).                                                             |
+| **UI check**                    | The `ui-tester` subagent drives the changed app with Playwright in a disposable Docker container and puts screenshots in the PR (ADR-0014).                                        |
+| **Connectors**                  | Read-only Notion, Google Docs and Slack through your claude.ai login (ADR-0027); GitHub through the engine only.                                                                   |
+| **Operations**                  | Secrets only in Infisical, Tailscale instead of open ports, systemd on a Hetzner VPS, logs to Grafana (ADR-0015, ADR-0016).                                                        |
+
+## Safety
+
+- Runs on your subscription through the official `claude` CLI only; the engine refuses to start if
+  `ANTHROPIC_API_KEY` is set (ADR-0003).
+- Per-run and daily limits on turns, cost and tokens; one worker at a time by default.
+- Workers cannot `git push` or call `gh`; owner API requests are guarded and the browser block-list is wide
+  (ADR-0028).
+- Everything fetched from outside (issues, PR comments, documents) is wrapped as untrusted content, and the
+  agent must report an injection attempt instead of following it (ADR-0017).
+- Both servers listen on loopback only; on a server they are reachable over Tailscale.
+
+## Documentation
 
 - What it does: [`docs/specs/abstract-project-spec.md`](docs/specs/abstract-project-spec.md)
-- How it is built: [`docs/architecture/README.md`](docs/architecture/README.md), decisions in [`docs/decisions/architecture/`](docs/decisions/architecture/README.md)
+- How it is built: [`docs/architecture/README.md`](docs/architecture/README.md), decisions in
+  [`docs/decisions/architecture/`](docs/decisions/architecture/README.md)
+- Current state and next steps: [`STATUS.md`](STATUS.md)
 - Webinar concept: [`docs/webinar/webinar-concept.md`](docs/webinar/webinar-concept.md)
 - UI brief for design: [`docs/specs/web-ui-design.md`](docs/specs/web-ui-design.md)
+- Instructions for AI coding agents in this repo: [`AGENTS.md`](AGENTS.md)
 
 ## Run it
 
