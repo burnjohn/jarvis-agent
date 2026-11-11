@@ -145,6 +145,34 @@ describe('thread list', () => {
     renderChat('/chat', { 'GET /api/threads': [] });
     expect(await screen.findByText(/No threads yet/)).toBeInTheDocument();
   });
+
+  it('resizes from its handle and remembers the width across a reload', async () => {
+    const user = userEvent.setup();
+    const first = renderChat('/chat', {});
+    const handle = await screen.findByRole('separator', { name: 'Resize thread list' });
+    expect(handle).toHaveAttribute('aria-valuenow', '304');
+    expect(handle).toHaveAttribute('aria-controls', 'thread-list');
+    expect(screen.getByRole('region', { name: 'Threads' })).toHaveAttribute('id', 'thread-list');
+
+    handle.focus();
+    await user.keyboard('{ArrowRight}{ArrowRight}');
+    expect(handle).toHaveAttribute('aria-valuenow', '336');
+    expect(window.localStorage.getItem('jarvis.chat.threadListWidth')).toBe('336');
+    first.unmount();
+
+    renderChat('/chat', {});
+    expect(
+      await screen.findByRole('separator', { name: 'Resize thread list' }),
+    ).toHaveAttribute('aria-valuenow', '336');
+  });
+
+  it('falls back to the default width when the stored one is invalid', async () => {
+    window.localStorage.setItem('jarvis.chat.threadListWidth', '"wide"');
+    renderChat('/chat', {});
+    expect(
+      await screen.findByRole('separator', { name: 'Resize thread list' }),
+    ).toHaveAttribute('aria-valuenow', '304');
+  });
 });
 
 describe('new thread', () => {
