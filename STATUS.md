@@ -178,6 +178,15 @@ From a security review of the 2026-11-10/11 changes (three High, five Medium, th
 - `main`'s history was rewritten on 2026-11-11 (a sensitive path removed); clones must
   `git fetch && git reset --hard origin/main`, and only `main` remains on GitHub.
 
+## Documentation site 2026-11-11 — on branch `jarvis/T-7`, not merged (ADR-0029)
+
+- `docs-site/` builds a VitePress site from `docs/specs`, `docs/architecture`, `docs/decisions` (never
+  `docs/plans`, `docs/webinar`, this file) with sidebar, local search, Mermaid and the interactive overview.
+  Workflow `docs` (`.github/workflows/docs.yml`): `docs / build` on every PR (a dead link fails it), deploy
+  to https://burnjohn.github.io/jarvis-agent/ on every push to `main`.
+- **Owner steps, once:** (M1) Settings → Pages → Source: GitHub Actions; (M2) a rule on `main` requiring the
+  `docs / build` check. Until M1 the deploy job fails; until M2 a red link check does not block the merge.
+
 ## Deployed 2026-11-11 — repository-agnostic UI check (ADR-0026)
 
 - **The engine knows no target project**: the worker composes an environment plan from the target
