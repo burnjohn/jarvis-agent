@@ -50,7 +50,7 @@
 }
 
 .kpiValue {
-  font-size: 1.75rem;
+  font-size: var(--font-size-xl);
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
