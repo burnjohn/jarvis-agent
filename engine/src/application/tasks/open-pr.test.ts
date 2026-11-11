@@ -124,7 +124,7 @@ describe('OpenPr — the green path', () => {
 
     await app.openPr.execute(worker, TEXT);
 
-    expect(app.codeHost.pullRequests[0]?.input.body).toContain(
+    expect(app.codeHost.pullRequests.at(-1)?.input.body).toContain(
       'Files that define the checks changed in this PR: `package.json`',
     );
   });
@@ -480,6 +480,402 @@ describe('OpenPr — the command list is the one fixed at approval', () => {
   });
 });
 
+describe('OpenPr — the list follows main', () => {
+  const MAIN = '# AGENTS.md of main';
+
+  it("refreshes a frozen agents_md list when main's AGENTS.md lists different commands", async () => {
+    const { app, task, worker } = await setup();
+    await freeze(app, task.id, ['pnpm test']);
+    app.branchPublisher.baseFiles.set('AGENTS.md', MAIN);
+    app.repoInfo.parsed = ['pnpm test:unit'];
+
+    await app.openPr.execute(worker, TEXT);
+
+    expect(app.checkRunner.calls[0]?.commands).toEqual(['pnpm test:unit']);
+    const fixed = app.db.tables.journal.filter((e) => e.type === 'checks_fixed');
+    expect(fixed).toHaveLength(2);
+    expect(fixed[1]).toMatchObject({
+      actor: 'system',
+      data: {
+        commands: ['pnpm test:unit'],
+        source: 'base_refresh',
+        cardId: null,
+        previous: ['pnpm test'],
+      },
+    });
+    const notes = app
+      .messagesOf(task.threadId)
+      .filter((m) => JSON.stringify(m.body).includes('pnpm test:unit'));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.kind).toBe('system');
+  });
+
+  it('leaves a worker-found list alone', async () => {
+    const { app, task, worker } = await setup();
+    await app.uow.run((tx) =>
+      tx.journal.append(
+        taskEvent(task.id, 'checks_fixed', app.clock.now(), 'owner', {
+          commands: ['pnpm test'],
+          source: 'worker',
+          cardId: 'm1',
+        }),
+      ),
+    );
+    app.branchPublisher.baseFiles.set('AGENTS.md', MAIN);
+    app.repoInfo.parsed = ['pnpm test:unit'];
+
+    await app.openPr.execute(worker, TEXT);
+
+    expect(app.checkRunner.calls[0]?.commands).toEqual(['pnpm test']);
+    expect(types(app).filter((t) => t === 'checks_fixed')).toHaveLength(1);
+    expect(app.branchPublisher.baseFileCalls).toBe(0);
+  });
+
+  it("does nothing when main's list is the same", async () => {
+    const { app, task, worker } = await setup();
+    await freeze(app, task.id, ['pnpm test']);
+    app.branchPublisher.baseFiles.set('AGENTS.md', MAIN);
+    app.repoInfo.parsed = ['pnpm test'];
+
+    await app.openPr.execute(worker, TEXT);
+    await app.openPr.execute(worker, TEXT);
+
+    expect(types(app).filter((t) => t === 'checks_fixed')).toHaveLength(1);
+    expect(JSON.stringify(app.messagesOf(task.threadId))).not.toContain('Checks updated');
+  });
+
+  it("runs the frozen list when main's AGENTS.md is missing or names no commands", async () => {
+    const missing = await setup();
+    await freeze(missing.app, missing.task.id, ['pnpm test']);
+    await missing.app.openPr.execute(missing.worker, TEXT);
+    expect(missing.app.checkRunner.calls[0]?.commands).toEqual(['pnpm test']);
+
+    const empty = await setup();
+    await freeze(empty.app, empty.task.id, ['pnpm test']);
+    empty.app.branchPublisher.baseFiles.set('AGENTS.md', MAIN);
+    empty.app.repoInfo.parsed = [];
+    await empty.app.openPr.execute(empty.worker, TEXT);
+    expect(empty.app.checkRunner.calls[0]?.commands).toEqual(['pnpm test']);
+    expect(types(empty.app).filter((t) => t === 'checks_fixed')).toHaveLength(1);
+  });
+
+  it('a refresh after a green gate and a host_error re-runs the gate with the new list', async () => {
+    const { app, task, worker } = await setup();
+    await freeze(app, task.id, ['pnpm test']);
+    app.codeHost.createPullRequestResult = { ok: false, reason: 'GitHub is down' };
+    expect(await app.openPr.execute(worker, TEXT)).toMatchObject({ reason: 'host_error' });
+
+    app.branchPublisher.baseFiles.set('AGENTS.md', MAIN);
+    app.repoInfo.parsed = ['pnpm test:unit'];
+    app.codeHost.createPullRequestResult = { ok: true, number: 7, url: 'u', created: true };
+    expect(await app.openPr.execute(worker, TEXT)).toMatchObject({ ok: true });
+
+    expect(app.checkRunner.calls).toHaveLength(2);
+    expect(app.checkRunner.calls[1]?.commands).toEqual(['pnpm test:unit']);
+    expect(app.codeHost.pullRequests.at(-1)?.input.body).toContain('pnpm test:unit');
+  });
+
+  it('treats a frozen row with source null like agents_md', async () => {
+    const { app, task, worker } = await setup();
+    await app.uow.run((tx) =>
+      tx.journal.append(
+        taskEvent(task.id, 'checks_fixed', app.clock.now(), 'owner', {
+          commands: ['pnpm test'],
+          cardId: 'm1',
+        }),
+      ),
+    );
+    app.branchPublisher.baseFiles.set('AGENTS.md', MAIN);
+    app.repoInfo.parsed = ['pnpm test:unit'];
+
+    await app.openPr.execute(worker, TEXT);
+
+    expect(app.checkRunner.calls[0]?.commands).toEqual(['pnpm test:unit']);
+  });
+});
+
+describe('OpenPr — red on main too', () => {
+  const BASE = 'b4s3b4s3e5f60718293a4b5c6d7e8f9012345678';
+  const redBoth = (app: TestApp, command: string): void => {
+    app.checkRunner.script(command, { exitCode: 1, tail: 'boom' });
+    app.checkRunner.scriptOnBase(command, { exitCode: 1, tail: 'boom' });
+  };
+  const ofType = (app: TestApp, type: string) =>
+    app.db.tables.journal.filter((e) => e.type === type);
+
+  it('opens the PR when every red command is also red on main, counting no retry', async () => {
+    const { app, task, worker } = await setup();
+    redBoth(app, 'pnpm test');
+
+    const result = await app.openPr.execute(worker, TEXT);
+
+    expect(result).toMatchObject({ ok: true, created: true });
+    expect(app.task(task.id).counters.checkRetries).toBe(0);
+    expect(ofType(app, 'check_preexisting')).toHaveLength(1);
+    expect(ofType(app, 'check_preexisting')[0]?.data).toMatchObject({
+      command: 'pnpm test',
+      baseSha: BASE,
+      headSha: SHA,
+    });
+    expect(ofType(app, 'checks_passed')[0]?.data['preexisting']).toEqual(['pnpm test']);
+    const body = app.codeHost.pullRequests[0]?.input.body ?? '';
+    expect(body).toContain('## Fails on main too');
+    expect(body).toContain('`pnpm test` — red on b4s3b4s as well; CI decides.');
+    expect(body).toContain('Output on this branch');
+    expect(body).toContain('boom');
+  });
+
+  it('counts a retry when the command is green on main', async () => {
+    const { app, task, worker } = await setup();
+    app.checkRunner.script('pnpm test', { exitCode: 1 });
+
+    const result = await app.openPr.execute(worker, TEXT);
+
+    expect(result).toMatchObject({ ok: false, reason: 'checks_failed', preexisting: [] });
+    expect(app.task(task.id).counters.checkRetries).toBe(1);
+    expect(app.branchPublisher.onBaseCalls).toEqual([BASE]);
+  });
+
+  it('mixed: one red on both, one red only on head', async () => {
+    const { app, task, worker } = await setup();
+    redBoth(app, 'pnpm test');
+    app.checkRunner.script('pnpm typecheck', { exitCode: 2 });
+
+    const result = await app.openPr.execute(worker, TEXT);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'checks_failed',
+      preexisting: ['pnpm test'],
+    });
+    expect(app.task(task.id).counters.checkRetries).toBe(1);
+    expectNothingPublished(app);
+  });
+
+  it('on exhaustion, the failing list leaves out what main fails too', async () => {
+    const { app, task, worker } = await setup();
+    redBoth(app, 'pnpm test');
+    app.checkRunner.script('pnpm typecheck', { exitCode: 2 });
+
+    let last: OpenPrResult | undefined;
+    for (let i = 0; i < 4; i += 1) {
+      await app.reportStage.execute(worker, { stage: 'Implementing' });
+      last = await app.openPr.execute(worker, TEXT);
+    }
+
+    expect(last).toMatchObject({
+      ok: false,
+      reason: 'checks_exhausted',
+      preexisting: ['pnpm test'],
+    });
+    const reason = String(
+      app.db.tables.journal.find((e) => e.type === 'stage_changed' && e.data['to'] === 'Failed')
+        ?.data['reason'],
+    );
+    expect(reason).toContain('pnpm typecheck');
+    expect(reason).not.toContain('pnpm test');
+    expect(app.task(task.id).stage).toBe('Failed');
+  });
+
+  it('runs only the red commands on base, and only once per base sha', async () => {
+    const { app, worker } = await setup();
+    redBoth(app, 'pnpm test');
+    expect(app.checkRunner.calls).toHaveLength(0);
+
+    await app.openPr.execute(worker, TEXT);
+    // `pnpm typecheck` is green on the branch: only the red one runs on base.
+    expect(app.checkRunner.calls).toHaveLength(2);
+    expect(app.checkRunner.calls.at(-1)?.commands).toEqual(['pnpm test']);
+    expect(app.checkRunner.calls.at(-1)?.logPath).toContain('checks/1-a1b2c3d-base.log');
+
+    // A new head, same merge base: the cached base result answers.
+    app.branchPublisher.sha = 'c0ffee00e5f60718293a4b5c6d7e8f9012345678';
+    app.codeHost.createPullRequestResult = { ok: false, reason: 'down' };
+    const before = app.checkRunner.calls.length;
+    await app.openPr.execute(worker, TEXT);
+
+    expect(app.checkRunner.calls.length).toBe(before + 1);
+    expect(app.branchPublisher.onBaseCalls).toHaveLength(1);
+    expect(ofType(app, 'check_base_result')).toHaveLength(1);
+  });
+
+  it('a base run that throws counts as green on base', async () => {
+    const { app, task, worker } = await setup();
+    app.checkRunner.script('pnpm test', { exitCode: 1 });
+    app.branchPublisher.onBaseError = new Error('worktree is dirty');
+
+    const result = await app.openPr.execute(worker, TEXT);
+
+    expect(result).toMatchObject({ ok: false, reason: 'checks_failed', preexisting: [] });
+    expect(app.task(task.id).counters.checkRetries).toBe(1);
+    expect(ofType(app, 'check_base_result')).toHaveLength(0);
+    expect(ofType(app, 'base_comparison_failed')[0]?.data['detail']).toBe('worktree is dirty');
+  });
+
+  it('refuses, without a retry, when the worktree is not back on the task head after the base run', async () => {
+    const { app, task, worker } = await setup();
+    app.checkRunner.script('pnpm test', { exitCode: 1 });
+    app.branchPublisher.headAfterBase = BASE;
+
+    const result = await app.openPr.execute(worker, TEXT);
+
+    expect(result).toMatchObject({ ok: false, reason: 'checks_unavailable' });
+    expect((result as { detail: string }).detail).toContain('could not restore your worktree');
+    expect(ofType(app, 'base_comparison_failed')).toHaveLength(1);
+    expect(app.task(task.id).counters.checkRetries).toBe(0);
+    expectNothingPublished(app);
+  });
+
+  it('a command that could not be started on base is green on base', async () => {
+    const { app, task, worker } = await setup();
+    app.checkRunner.script('pnpm test', { exitCode: 1 });
+    app.branchPublisher.onBaseHook = () => {
+      app.checkRunner.unavailable = { command: 'pnpm test', detail: 'exit 127' };
+    };
+
+    const result = await app.openPr.execute(worker, TEXT);
+
+    expect(result).toMatchObject({ ok: false, reason: 'checks_failed', preexisting: [] });
+    expect(app.task(task.id).counters.checkRetries).toBe(1);
+    expect(ofType(app, 'check_base_result')).toHaveLength(0);
+  });
+
+  it('on a task that already has a PR, a preexisting failure is told in the thread', async () => {
+    const { app, worker, thread } = await setup();
+    redBoth(app, 'pnpm test');
+    await app.openPr.execute(worker, TEXT);
+    app.branchPublisher.sha = 'c0ffee00e5f60718293a4b5c6d7e8f9012345678';
+
+    const result = await app.openPr.execute(worker, {});
+
+    expect(result).toMatchObject({ ok: true, created: false });
+    expect(app.codeHost.pullRequests).toHaveLength(1);
+    const texts = app
+      .messagesOf(thread.id)
+      .filter((m) => m.kind === 'system')
+      .map((m) => (m.body as { text: string }).text)
+      .filter((t) => t.startsWith('Fails on main too'));
+    expect(texts).toEqual(['Fails on main too: pnpm test']);
+  });
+});
+
+describe('OpenPr — skipping a check', () => {
+  const REASON = 'needs Postgres; CI runs it';
+  const SKIP = [{ command: 'pnpm test', reason: REASON }];
+  const NEW_SHA = 'c0ffee00e5f60718293a4b5c6d7e8f9012345678';
+  const ofType = (app: TestApp, type: string) =>
+    app.db.tables.journal.filter((e) => e.type === type);
+  /** A red `pnpm test` on the current head, as the worker's first call leaves it. */
+  async function redOnce() {
+    const ctx = await setup();
+    ctx.app.checkRunner.script('pnpm test', { exitCode: 1, tail: 'no database' });
+    const red = await ctx.app.openPr.execute(ctx.worker, TEXT);
+    expect(red).toMatchObject({ ok: false, reason: 'checks_failed' });
+    ctx.app.checkRunner.calls.length = 0;
+    return ctx;
+  }
+
+  it('skips a command that ran red on this head and opens the PR', async () => {
+    const { app, task, worker } = await redOnce();
+
+    const result = await app.openPr.execute(worker, { ...TEXT, skip: SKIP });
+
+    expect(result).toMatchObject({ ok: true, created: true });
+    expect(app.checkRunner.calls).toHaveLength(1);
+    expect(app.checkRunner.calls[0]?.commands).toEqual(['pnpm typecheck']);
+    expect(ofType(app, 'check_skipped')).toHaveLength(1);
+    expect(ofType(app, 'check_skipped')[0]?.data).toMatchObject({
+      command: 'pnpm test',
+      reason: REASON,
+      headSha: SHA,
+    });
+    const body = app.codeHost.pullRequests[0]?.input.body ?? '';
+    expect(body).toContain('## Checks skipped locally — CI decides');
+    expect(body).toContain(`- \`pnpm test\` — ${REASON}`);
+    expect(body).toContain('no database');
+    expect(body).not.toContain('✗ `pnpm test`');
+    expect(app.task(task.id).stage).toBe('PR Open');
+    expect(app.task(task.id).counters.checkRetries).toBe(0);
+  });
+
+  it('with every command skipped, no gate runs and the PR opens', async () => {
+    const { app, worker } = await setup();
+    app.checkRunner.script('pnpm test', { exitCode: 1, tail: 'no database' });
+    app.checkRunner.script('pnpm typecheck', { exitCode: 2, tail: 'bad types' });
+    await app.openPr.execute(worker, TEXT);
+    app.checkRunner.calls.length = 0;
+
+    const result = await app.openPr.execute(worker, {
+      ...TEXT,
+      skip: [...SKIP, { command: 'pnpm typecheck', reason: 'cannot be made green here' }],
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(app.checkRunner.calls).toHaveLength(0);
+    expect(ofType(app, 'check_skipped')).toHaveLength(2);
+    const body = app.codeHost.pullRequests[0]?.input.body ?? '';
+    expect(body).toContain('## Checks skipped locally');
+    expect(body).not.toContain('## Checks (run by Jarvis)');
+  });
+
+  it('refuses to skip a command that never ran red on this head', async () => {
+    const { app, task, worker } = await redOnce();
+    app.branchPublisher.sha = NEW_SHA;
+    const retries = app.task(task.id).counters.checkRetries;
+    const journalBefore = app.db.tables.journal.length;
+
+    const result = await app.openPr.execute(worker, { ...TEXT, skip: SKIP });
+
+    expect(result).toMatchObject({ ok: false, reason: 'skip_not_allowed' });
+    expect((result as { detail: string }).detail).toContain('`pnpm test`');
+    expect((result as { detail: string }).detail).toContain('has not run red on c0ffee0');
+    expect(app.checkRunner.calls).toHaveLength(0);
+    expectNothingPublished(app);
+    expect(app.task(task.id).counters.checkRetries).toBe(retries);
+    expect(app.db.tables.journal.length).toBe(journalBefore);
+  });
+
+  it('refuses to skip a command not in the frozen list', async () => {
+    const { app, task, worker } = await redOnce();
+    const journalBefore = app.db.tables.journal.length;
+
+    const result = await app.openPr.execute(worker, {
+      ...TEXT,
+      skip: [{ command: 'rm -rf /', reason: 'not a real check at all' }],
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: 'skip_not_allowed' });
+    expect((result as { detail: string }).detail).toContain('`rm -rf /`');
+    expect((result as { detail: string }).detail).toContain('not in the frozen list');
+    expect(app.checkRunner.calls).toHaveLength(0);
+    expectNothingPublished(app);
+    expect(app.task(task.id).counters.checkRetries).toBe(1);
+    expect(app.db.tables.journal.length).toBe(journalBefore);
+  });
+
+  it('a skip on a task that already has a PR pushes, leaves the PR body alone and tells the thread', async () => {
+    const { app, worker, thread } = await setup();
+    await app.openPr.execute(worker, TEXT);
+    app.branchPublisher.sha = NEW_SHA;
+    app.checkRunner.script('pnpm test', { exitCode: 1, tail: 'no database' });
+    const red = await app.openPr.execute(worker, {});
+    expect(red).toMatchObject({ ok: false, reason: 'checks_failed' });
+    const before = structuredClone(app.codeHost.pullRequests);
+
+    const result = await app.openPr.execute(worker, { skip: SKIP });
+
+    expect(result).toMatchObject({ ok: true, created: false });
+    expect(app.codeHost.pullRequests).toEqual(before);
+    expect(app.branchPublisher.pushes.at(-1)?.sha).toBe(NEW_SHA);
+    const texts = app
+      .messagesOf(thread.id)
+      .filter((m) => m.kind === 'system')
+      .map((m) => (m.body as { text: string }).text)
+      .filter((t) => t.startsWith('Skipped locally'));
+    expect(texts).toEqual([`Skipped locally: pnpm test — ${REASON}`]);
+  });
+});
+
 describe('OpenPr — a failure after a green gate does not repeat the gate', () => {
   it('host_error: the next call for the same commit skips the checks and finishes', async () => {
     const { app, task, worker } = await setup();
@@ -682,6 +1078,26 @@ describe('OpenPr — one gate per task, and the gate stops with its run', () => 
     expect(app.task(taskId).counters.checkRetries).toBe(0);
   });
 
+  it('a base run aborted with the worker run keeps the "run ended" refusal: nothing cached, no retry', async () => {
+    const { app, taskId, process, worker } = await liveWorker();
+    app.checkRunner.script('pnpm test', { exitCode: 1 });
+    app.branchPublisher.onBaseHook = () => {
+      app.checkRunner.hold = new Promise<void>(() => undefined);
+    };
+
+    const running = app.openPr.execute(worker, TEXT);
+    for (let i = 0; i < 20 && app.branchPublisher.onBaseCalls.length === 0; i += 1) await tick();
+    expect(app.branchPublisher.onBaseCalls).toHaveLength(1);
+    await process?.succeed(0.1);
+    const result = await running;
+
+    expect(result).toMatchObject({ ok: false, reason: 'checks_unavailable' });
+    expect((result as { detail: string }).detail).toContain('run ended');
+    expect(app.db.tables.journal.filter((e) => e.type === 'check_base_result')).toEqual([]);
+    expect(app.task(taskId).counters.checkRetries).toBe(0);
+    expectNothingPublished(app);
+  });
+
   it('is aborted when the task is cancelled (the cancel stops the run)', async () => {
     const { app, taskId, worker } = await liveWorker();
     app.checkRunner.hold = new Promise<void>(() => undefined);
@@ -734,5 +1150,49 @@ describe('no use case but OpenPr moves a task to PR Open (ADR-0022)', () => {
     };
     walk(root);
     expect(found).toEqual([join('tasks', 'open-pr.ts')]);
+  });
+});
+
+describe('OpenPr — a change to the UI is checked in a browser first (ADR-0014)', () => {
+  const touchUi = (app: TestApp): void => {
+    app.branchPublisher.state = {
+      dirtyFiles: [],
+      commitsAhead: 1,
+      changedFiles: ['src/a.ts', 'web/src/Button.tsx'],
+    };
+  };
+  const note = (app: TestApp, taskId: string, type: string): Promise<void> =>
+    app.uow.run((tx) => tx.journal.append(taskEvent(taskId, type, app.clock.now(), 'system', {})));
+
+  it('refuses the first PR while no UI check was attempted, and names the files', async () => {
+    const { app, worker } = await setup('Reviewing');
+    touchUi(app);
+
+    const result = await app.openPr.execute(worker, TEXT);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'ui_check_required',
+      files: ['web/src/Button.tsx'],
+    });
+    expect(app.checkRunner.calls).toHaveLength(0);
+    expectNothingPublished(app);
+  });
+
+  it.each(['dev_server_started', 'dev_server_refused'])(
+    'opens the PR once the journal shows %s',
+    async (type) => {
+      const { app, task, worker } = await setup('Reviewing');
+      touchUi(app);
+      await note(app, task.id, type);
+
+      expect(await app.openPr.execute(worker, TEXT)).toMatchObject({ ok: true });
+    },
+  );
+
+  it('asks for nothing when the diff touches no UI file', async () => {
+    const { app, worker } = await setup('Reviewing');
+
+    expect(await app.openPr.execute(worker, TEXT)).toMatchObject({ ok: true });
   });
 });

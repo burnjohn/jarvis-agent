@@ -6,6 +6,7 @@ import {
   type JarvisConfig,
   type StreamEvent,
 } from '@jarvis/shared';
+import type { EnvironmentPlan } from '@jarvis/shared';
 import { memoryEntries, parseMemory } from '../../domain/index.js';
 import type { IsoTime, Message } from '../../domain/index.js';
 import type { ArtifactBlob, ArtifactFile, ArtifactStore } from '../ports/artifact-store.js';
@@ -263,21 +264,22 @@ export class InMemoryArtifactStore implements ArtifactStore {
 
 /** ADR-0014: records what the engine was asked to start, without starting anything. */
 export class FakeDevServerManager implements DevServerManager {
-  readonly started: { taskId: string; cwd: string }[] = [];
+  readonly started: { taskId: string; cwd: string; plan: EnvironmentPlan }[] = [];
   readonly stopped: string[] = [];
   /** What the next `start` answers; the default pretends the server came up. */
   nextResult: DevServerResult | null = null;
   private lease: DevServerLease | null = null;
 
-  async start(taskId: string, cwd: string): Promise<DevServerResult> {
-    this.started.push({ taskId, cwd });
+  async start(taskId: string, cwd: string, plan: EnvironmentPlan): Promise<DevServerResult> {
+    this.started.push({ taskId, cwd, plan });
     const result =
       this.nextResult ??
       ({
         ok: true,
         lease: {
           taskId,
-          baseUrl: 'http://127.0.0.1:5173',
+          baseUrl: `http://127.0.0.1:${plan.app.port}`,
+          origins: [plan.app.port, ...plan.extraPorts].map((p) => `http://127.0.0.1:${p}`),
           expiresAt: '2026-11-08T00:15:00.000Z',
         },
       } satisfies DevServerResult);
@@ -467,8 +469,15 @@ export class FakeRepoInfo implements RepoInfo {
     warning: null,
   };
 
+  /** What `parseCommands` answers; `found.checkCommands` when left `null`. */
+  parsed: string[] | null = null;
+
   async commands(): Promise<RepoCommands> {
     return this.found;
+  }
+
+  parseCommands(): string[] {
+    return this.parsed ?? [...this.found.checkCommands];
   }
 }
 
@@ -558,6 +567,10 @@ export class FakeCheckRunner implements CheckRunner {
   }[] = [];
   /** Per command; a later `script` for the same command replaces the earlier one. */
   private readonly scripted = new Map<string, ScriptedCheck>();
+  /** Per command, answered while `onBase` is true; a command with none is green on the base. */
+  private readonly scriptedOnBase = new Map<string, ScriptedCheck>();
+  /** True while the branch publisher's `onBase` callback runs: the worktree is on the merge base. */
+  onBase = false;
   /** The next `run` reports this command as unable to start, and stops there. */
   unavailable: { command: string; detail: string } | null = null;
   /** Progress lines the next `run` emits through `onProgress`, before it answers. */
@@ -569,6 +582,10 @@ export class FakeCheckRunner implements CheckRunner {
 
   script(command: string, outcome: ScriptedCheck): void {
     this.scripted.set(command, outcome);
+  }
+
+  scriptOnBase(command: string, outcome: ScriptedCheck): void {
+    this.scriptedOnBase.set(command, outcome);
   }
 
   async run(spec: CheckRunSpec): Promise<CheckRunOutcome> {
@@ -603,7 +620,7 @@ export class FakeCheckRunner implements CheckRunner {
         timedOut: false,
         durationMs: 10,
         tail: '',
-        ...this.scripted.get(command),
+        ...(this.onBase ? this.scriptedOnBase : this.scripted).get(command),
       });
     }
     return { results, unavailable: null };
@@ -621,6 +638,44 @@ export class FakeBranchPublisher implements BranchPublisher {
   pushResult: PushResult = { ok: true };
   readonly pushes: { taskId: string; repo: RepoTarget; sha: string }[] = [];
   readonly statusCalls: string[] = [];
+  /** Path → content of what the remote base branch holds; a missing path answers `null`. */
+  readonly baseFiles = new Map<string, string>();
+  /** The shas `onBase` was asked to switch to. */
+  readonly onBaseCalls: string[] = [];
+  mergeBaseSha = 'b4s3b4s3e5f60718293a4b5c6d7e8f9012345678';
+  /** When set, `onBase` rejects with it instead of running: the base checkout failed. */
+  onBaseError: Error | null = null;
+  /** Runs when `onBase` has switched to the base, before the callback: a test's seam into that moment. */
+  onBaseHook: (() => void) | null = null;
+  /** When set, HEAD is this sha once `onBase` returns: a restore that went wrong. */
+  headAfterBase: string | null = null;
+
+  constructor(private readonly checkRunner?: FakeCheckRunner) {}
+
+  /** How many times `baseFile` was asked. */
+  baseFileCalls = 0;
+
+  async baseFile(input: { path: string }): Promise<string | null> {
+    this.baseFileCalls += 1;
+    return this.baseFiles.get(input.path) ?? null;
+  }
+
+  async mergeBase(): Promise<string> {
+    return this.mergeBaseSha;
+  }
+
+  async onBase<T>(_taskId: string, sha: string, run: () => Promise<T>): Promise<T> {
+    this.onBaseCalls.push(sha);
+    if (this.onBaseError !== null) throw this.onBaseError;
+    if (this.checkRunner) this.checkRunner.onBase = true;
+    try {
+      this.onBaseHook?.();
+      return await run();
+    } finally {
+      if (this.headAfterBase !== null) this.sha = this.headAfterBase;
+      if (this.checkRunner) this.checkRunner.onBase = false;
+    }
+  }
 
   async headSha(): Promise<string> {
     return this.sha;

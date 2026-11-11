@@ -26,7 +26,7 @@ const validInputs: Record<ToolName, Record<string, unknown>> = {
   report_pr: { number: 3, url: 'https://github.com/o/r/pull/3' },
   log_note: { text: 'note' },
   post_update: { text: 'ran the suite, 2 failures, fixing now' },
-  start_dev_server: {},
+  start_dev_server: { plan: { app: { command: 'npm run dev', port: 5173 } } },
   stop_dev_server: {},
   attach_image: { path: 'screenshots/001-task-card.png', alt: 'the task card' },
   comment_on_pr: { body: '## UI verification\n\nverdict: pass' },
@@ -229,6 +229,16 @@ describe('open_pr and checks (ADR-0022)', () => {
       expect(toolsByRole.dispatcher).not.toContain(name);
       expect(name in toolInputSchemas).toBe(true);
     }
+  });
+
+  it('open_pr accepts skip entries and rejects a reason under 10 characters', () => {
+    const entry = { command: 'pnpm test', reason: 'needs Postgres; CI runs it' };
+    expect(open_pr.safeParse({ skip: [entry] }).success).toBe(true);
+    expect(open_pr.safeParse({ skip: [{ ...entry, reason: 'too short' }] }).success).toBe(false);
+    expect(open_pr.safeParse({ skip: [{ ...entry, command: '' }] }).success).toBe(false);
+    expect(open_pr.safeParse({ skip: [{ ...entry, extra: 1 }] }).success).toBe(false);
+    expect(open_pr.safeParse({ skip: Array(20).fill(entry) }).success).toBe(true);
+    expect(open_pr.safeParse({ skip: Array(21).fill(entry) }).success).toBe(false);
   });
 
   it('open_pr takes no arguments, or a title and a body, and nothing else', () => {

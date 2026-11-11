@@ -6,9 +6,11 @@ import {
   recordCheckFailure,
   recordCheckPass,
   resolveCheckCommands,
+  uiFilesIn,
   type Task,
   type TaskEvent,
 } from '../../domain/index.js';
+import { redOnBase } from './base-comparison.js';
 import { ForbiddenError } from '../errors.js';
 import { newWatch } from '../code-host/new-watch.js';
 import type { BodyOf } from '../conversation/message-bodies.js';
@@ -31,6 +33,15 @@ import { worktreeFor } from './worktree-for.js';
 export interface OpenPrInput {
   readonly title?: string;
   readonly body?: string;
+  /** Frozen commands the worker leaves out because they ran red on this head (validated here). */
+  readonly skip?: readonly { readonly command: string; readonly reason: string }[];
+}
+
+/** A skip the engine accepted, with the last red output of the command on this head. */
+interface Skipped {
+  readonly command: string;
+  readonly reason: string;
+  readonly tail: string;
 }
 
 /** What a check looked like to the worker: the result plus nothing the engine keeps to itself. */
@@ -41,13 +52,15 @@ export type OpenPrRefusal =
   | 'already_running'
   | 'dirty_tree'
   | 'no_commits'
+  | 'ui_check_required'
   | 'no_checks_declared'
   | 'checks_unavailable'
   | 'push_rejected'
   | 'host_unconfigured'
   | 'host_error'
   | 'repo_unknown'
-  | 'title_and_body_required';
+  | 'title_and_body_required'
+  | 'skip_not_allowed';
 
 export type OpenPrResult =
   | {
@@ -69,6 +82,8 @@ export type OpenPrResult =
       readonly attempt: number;
       readonly max: number;
       readonly results: readonly CheckResultDto[];
+      /** Red on the merge base as well: not the task's to fix. */
+      readonly preexisting: readonly string[];
       /** Relative to the task's artifacts directory. */
       readonly logPath: string;
     }
@@ -77,6 +92,7 @@ export type OpenPrResult =
       readonly reason: 'checks_exhausted';
       readonly max: number;
       readonly results: readonly CheckResultDto[];
+      readonly preexisting: readonly string[];
       readonly logPath: string;
     };
 
@@ -101,6 +117,8 @@ export interface OpenPrDeps extends TaskDeps {
 /** The stages `open_pr` may be called from (ADR-0022). `Verifying` is what the engine itself sets. */
 const ALLOWED_STAGES: readonly TaskStage[] = ['Implementing', 'Verifying', 'Reviewing', 'Fixing'];
 
+const TREE_NOT_RESTORED = 'worktree not restored';
+
 const sha7 = (sha: string): string => sha.slice(0, 7);
 
 const strings = (value: unknown): string[] =>
@@ -111,6 +129,33 @@ function lastIndexOfType(journal: readonly TaskEvent[], type: string): number {
   return -1;
 }
 
+/** Journal rows that show the worker at least tried to bring the app up (ADR-0014). */
+const UI_CHECK_ATTEMPTS: readonly string[] = ['dev_server_started', 'dev_server_refused'];
+
+/**
+ * The UI check is part of the workflow, not an option the worker may forget: a first pull request
+ * whose diff touches UI files is not opened until the journal shows the check was attempted. A
+ * refused start counts — the worker then says in the PR why the check did not complete.
+ */
+function uiCheckMissing(
+  task: Task,
+  journal: readonly TaskEvent[],
+  status: BranchStatus,
+  ui: { readonly enabled: boolean; readonly paths: readonly string[] },
+): OpenPrResult | null {
+  if (!ui.enabled || task.pr !== null) return null;
+  const files = uiFilesIn(status.changedFiles, ui.paths);
+  if (files.length === 0) return null;
+  if (journal.some((event) => UI_CHECK_ATTEMPTS.includes(event.type))) return null;
+  return {
+    ok: false,
+    reason: 'ui_check_required',
+    detail:
+      'This change touches UI files and no UI check has run. Call report_stage Reviewing, run the UI check (start_dev_server with a plan, the ui-tester subagent, stop_dev_server), then call open_pr again.',
+    files: files.slice(0, 20),
+  };
+}
+
 /** The commands the owner's approval fixed: the latest `checks_fixed` row (ADR-0022). */
 function frozenCommands(journal: readonly TaskEvent[]): string[] | null {
   const at = lastIndexOfType(journal, 'checks_fixed');
@@ -118,26 +163,112 @@ function frozenCommands(journal: readonly TaskEvent[]): string[] | null {
   return at >= 0 && commands.length > 0 ? commands : null;
 }
 
+function latestFixedSource(journal: readonly TaskEvent[]): unknown {
+  return journal[lastIndexOfType(journal, 'checks_fixed')]?.data['source'];
+}
+
 /**
  * A green gate for exactly this commit that no later approval has invalidated: the push or the
  * host failed after it, so the next call must not run everything again.
  */
-function cachedGreen(journal: readonly TaskEvent[], headSha: string): CheckResult[] | null {
+function cachedGreen(journal: readonly TaskEvent[], headSha: string): GreenGate | null {
   const fixedAt = lastIndexOfType(journal, 'checks_fixed');
   for (let i = journal.length - 1; i > fixedAt; i -= 1) {
     const event = journal[i];
     if (event?.type === 'checks_passed' && event.data['headSha'] === headSha) {
       const results = event.data['results'];
-      return Array.isArray(results) ? (results as CheckResult[]) : [];
+      const baseSha = event.data['baseSha'];
+      return {
+        results: Array.isArray(results) ? (results as CheckResult[]) : [],
+        preexisting: strings(event.data['preexisting']),
+        baseSha: typeof baseSha === 'string' ? baseSha : null,
+      };
     }
   }
   return null;
 }
 
+/** A passed gate: what ran, and which of the red commands main fails as well. */
+interface GreenGate {
+  readonly results: readonly CheckResult[];
+  readonly preexisting: readonly string[];
+  readonly baseSha: string | null;
+}
+
 const isRed = (result: CheckResult): boolean => result.exitCode !== 0 || result.timedOut;
+
+/** The newest red result of `command` on exactly this head, from the `checks_failed` rows. */
+function lastRedOn(
+  journal: readonly TaskEvent[],
+  headSha: string,
+  command: string,
+): CheckResult | null {
+  for (let i = journal.length - 1; i >= 0; i -= 1) {
+    const event = journal[i];
+    if (event?.type !== 'checks_failed' || event.data['headSha'] !== headSha) continue;
+    const results = event.data['results'];
+    if (!Array.isArray(results)) continue;
+    const red = (results as CheckResult[]).find((r) => r.command === command && isRed(r));
+    if (red !== undefined) return red;
+  }
+  return null;
+}
+
+/** The first skip the worker may not make, or the accepted ones. */
+function validatedSkips(
+  skip: NonNullable<OpenPrInput['skip']>,
+  commands: readonly string[],
+  journal: readonly TaskEvent[],
+  headSha: string,
+): { readonly detail: string } | { readonly skipped: Skipped[] } {
+  const skipped: Skipped[] = [];
+  for (const { command, reason } of skip) {
+    if (!commands.includes(command)) {
+      return { detail: `\`${command}\` cannot be skipped: it is not in the frozen list.` };
+    }
+    const red = lastRedOn(journal, headSha, command);
+    if (red === null) {
+      return {
+        detail: `\`${command}\` cannot be skipped: it has not run red on ${sha7(headSha)}. Run open_pr without skipping it first; only a check that failed on this commit can be skipped.`,
+      };
+    }
+    skipped.push({ command, reason, tail: red.tail });
+  }
+  return { skipped };
+}
+
+/** What CI will decide instead of the gate: each skipped command, why, and its last red tail. */
+function skippedSection(skipped: readonly Skipped[]): string {
+  const items = skipped.map(({ command, reason, tail }) => {
+    const lastLines = tail.split('\n').slice(-20).join('\n');
+    return [
+      `- \`${command}\` — ${reason}`,
+      `<details><summary>Last red output</summary>\n\n\`\`\`\n${lastLines}\n\`\`\`\n\n</details>`,
+    ].join('\n\n');
+  });
+  return ['## Checks skipped locally — CI decides', ...items].join('\n\n');
+}
 
 function duration(ms: number): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
+/** The commands red on the merge base too: named, with the tail of their output folded away. */
+function failsOnMain(input: {
+  readonly results: readonly CheckResult[];
+  readonly preexisting: readonly string[];
+  readonly baseSha: string | null;
+}): string {
+  const base = input.baseSha === null ? 'main' : sha7(input.baseSha);
+  const items = input.preexisting.map((command) => {
+    const tail = input.results.find((r) => r.command === command)?.tail ?? '';
+    const lastLines = tail.split('\n').slice(-20).join('\n');
+    return [
+      `- ✗ \`${command}\` — red on ${base} as well; CI decides.`,
+      `<details><summary>Output on this branch</summary>\n\n\`\`\`\n${lastLines}\n\`\`\`\n\n</details>`,
+    ].join('\n\n');
+  });
+  return ['## Fails on main too', ...items].join('\n\n');
 }
 
 /** The engine's own claim, appended to the worker's PR text: what ran, how it ended, on which commit. */
@@ -146,12 +277,18 @@ function pullRequestBody(input: {
   readonly results: readonly CheckResult[];
   readonly headSha: string;
   readonly changedFiles: readonly string[];
+  readonly preexisting: readonly string[];
+  readonly baseSha: string | null;
+  readonly skipped: readonly Skipped[];
 }): string {
   const lines = input.results.map(
     (r) =>
       `- ${isRed(r) ? '✗' : '✓'} \`${r.command}\` — ${duration(r.durationMs)} (${sha7(input.headSha)})`,
   );
-  const sections = [input.body.trimEnd(), '## Checks (run by Jarvis)', lines.join('\n')];
+  const sections = [input.body.trimEnd()];
+  if (lines.length > 0) sections.push('## Checks (run by Jarvis)', lines.join('\n'));
+  if (input.preexisting.length > 0) sections.push(failsOnMain(input));
+  if (input.skipped.length > 0) sections.push(skippedSection(input.skipped));
   const defining = pathsDefiningChecks(input.changedFiles);
   if (defining.length > 0) {
     sections.push(
@@ -177,7 +314,7 @@ export class OpenPr {
 
   async execute(identity: RunIdentity, input: OpenPrInput): Promise<OpenPrResult> {
     // Only a title and a body exist as input; anything else the caller sent is not read.
-    const { title, body } = input;
+    const { title, body, skip } = input;
     const taskId = identity.taskId;
     if (taskId === undefined || identity.role !== 'worker') {
       throw new ForbiddenError('this tool is only available to a worker run of a task');
@@ -193,7 +330,7 @@ export class OpenPr {
     const abort = new AbortController();
     const unsubscribe = this.deps.liveRuns.onEnd(identity.runId, () => abort.abort());
     try {
-      return await this.run(identity, { title, body }, abort.signal);
+      return await this.run(identity, { title, body, skip }, abort.signal);
     } finally {
       unsubscribe();
       this.running.delete(taskId);
@@ -261,9 +398,11 @@ export class OpenPr {
           'There is no commit beyond the base branch yet: commit your work, then call open_pr.',
       };
     }
+    const missing = uiCheckMissing(task, journal, status, deps.config.current().ui);
+    if (missing !== null) return missing;
     const headSha = await deps.branchPublisher.headSha(task.id);
 
-    const commands = await this.commandsFor(task, journal, worktree.path);
+    const commands = await this.commandsFor(task, journal, worktree.path, repo);
     if (commands === null) {
       return {
         ok: false,
@@ -273,28 +412,54 @@ export class OpenPr {
       };
     }
 
-    const cached = cachedGreen(journal, headSha);
-    let results: readonly CheckResult[];
-    if (cached === null) {
+    // The commands may have just been refreshed: a green on the old list must not be reused, so
+    // the cache is judged on the journal as it is now, after the latest `checks_fixed`.
+    const current = await transact(deps, (tx) => tx.journal.list(task.id));
+    // Skips are judged before anything runs: a refusal publishes, journals and counts nothing.
+    const asked = validatedSkips(input.skip ?? [], commands, current, headSha);
+    if ('detail' in asked) return { ok: false, reason: 'skip_not_allowed', detail: asked.detail };
+    const { skipped } = asked;
+    const left = commands.filter((c) => !skipped.some((s) => s.command === c));
+
+    const cached = cachedGreen(current, headSha);
+    let green: GreenGate;
+    if (cached === null && left.length === 0) {
+      green = { results: [], preexisting: [], baseSha: null };
+    } else if (cached === null) {
       const gate = await this.gate({
         identity,
         task,
-        commands,
+        commands: left,
         headSha,
         worktreePath: worktree.path,
         signal,
       });
       if ('refusal' in gate) return gate.refusal;
-      results = gate.results;
+      green = gate;
     } else {
-      results = cached;
+      green = cached;
     }
 
     // The tree must still be what was checked. The pushed sha is the one that ran either way.
     const after = await this.settled(task.id, headSha);
     if (after.refusal !== null) return after.refusal;
 
-    return this.publish({ identity, task, repo, headSha, results, status: after.status, input });
+    for (const { command, reason } of skipped) {
+      await transact(deps, (tx) =>
+        deps.writer.note(tx, task.id, 'check_skipped', 'system', { command, reason, headSha }),
+      );
+    }
+
+    return this.publish({
+      identity,
+      task,
+      repo,
+      headSha,
+      green,
+      skipped,
+      status: after.status,
+      input,
+    });
   }
 
   /** The frozen list, or the one `AGENTS.md` gives a task approved before ADR-0022 (journalled). */
@@ -302,9 +467,10 @@ export class OpenPr {
     task: Task,
     journal: readonly TaskEvent[],
     worktreePath: string,
+    repo: RepoTarget,
   ): Promise<string[] | null> {
     const frozen = frozenCommands(journal);
-    if (frozen !== null) return frozen;
+    if (frozen !== null) return this.refreshed(task, journal, frozen, repo);
     const found = await this.deps.repoInfo.commands(worktreePath);
     const resolved = resolveCheckCommands({ agentsMd: found.checkCommands, proposed: undefined });
     if (!resolved.ok) return null;
@@ -319,6 +485,52 @@ export class OpenPr {
     return commands;
   }
 
+  /**
+   * A list the engine found (not the worker) follows main: when main's `AGENTS.md` names other
+   * commands, the new list is journalled, announced and used. The file is read from the remote base
+   * tip, never from the task's worktree or branch.
+   */
+  private async refreshed(
+    task: Task,
+    journal: readonly TaskEvent[],
+    frozen: string[],
+    repo: RepoTarget,
+  ): Promise<string[]> {
+    const { deps } = this;
+    if (latestFixedSource(journal) === 'worker') return frozen;
+    const markdown = await deps.branchPublisher.baseFile({
+      taskId: task.id,
+      repo,
+      path: 'AGENTS.md',
+    });
+    if (markdown === null) return frozen;
+    const fresh = deps.repoInfo.parseCommands(markdown);
+    if (
+      fresh.length === 0 ||
+      (fresh.length === frozen.length && fresh.every((c, i) => c === frozen[i]))
+    ) {
+      return frozen;
+    }
+    await transact(deps, async (tx, outbox) => {
+      await deps.writer.note(tx, task.id, 'checks_fixed', 'system', {
+        commands: fresh,
+        source: 'base_refresh',
+        cardId: null,
+        previous: frozen,
+      });
+      const body: BodyOf<'system'> = {
+        text: `Checks updated from main's AGENTS.md: ${frozen.join(', ')} → ${fresh.join(', ')}.`,
+      };
+      await deps.messages.post(tx, outbox, {
+        threadId: task.threadId,
+        taskId: task.id,
+        kind: 'system',
+        body,
+      });
+    });
+    return fresh;
+  }
+
   /** Runs the gate and writes its outcome. A `refusal` is the whole answer; `results` means green. */
   private async gate(input: {
     readonly identity: RunIdentity;
@@ -327,7 +539,7 @@ export class OpenPr {
     readonly headSha: string;
     readonly worktreePath: string;
     readonly signal: AbortSignal;
-  }): Promise<{ readonly results: readonly CheckResult[] } | { readonly refusal: OpenPrResult }> {
+  }): Promise<GreenGate | { readonly refusal: OpenPrResult }> {
     const { deps } = this;
     const { task, commands, headSha, signal } = input;
     const { limits } = deps.config.current();
@@ -380,14 +592,41 @@ export class OpenPr {
       }));
     await progress;
 
-    if (signal.aborted) {
-      return {
-        refusal: {
-          ok: false,
-          reason: 'checks_unavailable',
-          detail: 'The run ended while the checks were running; call open_pr again.',
-        },
-      };
+    if (signal.aborted) return { refusal: runEnded() };
+
+    // Between 2 and 3: a red command that main fails as well is not the task's.
+    const reds = outcome.results.filter(isRed).map((r) => r.command);
+    const base =
+      outcome.unavailable === null && reds.length > 0
+        ? await redOnBase(deps, {
+            taskId: task.id,
+            reds,
+            worktreePath: input.worktreePath,
+            timeoutMs: limits.checkTimeoutMinutes * 60_000,
+            signal,
+            relativeLog: join('checks', `${attempt}-${sha7(headSha)}-base.log`),
+          })
+        : null;
+    if (signal.aborted) return { refusal: runEnded() };
+    if (base !== null) {
+      const broken = await this.baseRunLeftTheTree(task.id, headSha, base.error);
+      if (broken !== null) {
+        await transact(deps, (tx) =>
+          deps.writer.note(tx, task.id, 'base_comparison_failed', 'system', {
+            headSha,
+            detail: broken,
+          }),
+        );
+        if (broken.startsWith(TREE_NOT_RESTORED)) {
+          return {
+            refusal: {
+              ok: false,
+              reason: 'checks_unavailable',
+              detail: `The engine could not restore your worktree after running the failed checks on main (${broken}). This does not count against your retries; check \`git status\` and call open_pr again.`,
+            },
+          };
+        }
+      }
     }
 
     // Phase 3: write what happened.
@@ -413,13 +652,25 @@ export class OpenPr {
       }
 
       const results = outcome.results;
-      if (!results.some(isRed) && results.length === commands.length) {
+      const baseSha = base?.baseSha ?? null;
+      const preexisting = base?.preexisting ?? [];
+      for (const command of preexisting) {
+        await deps.writer.note(tx, fresh.id, 'check_preexisting', 'system', {
+          command,
+          baseSha,
+          headSha,
+        });
+      }
+      const complete = results.length === commands.length;
+      if (complete && results.filter(isRed).every((r) => preexisting.includes(r.command))) {
         const passed = recordCheckPass(fresh);
         await deps.writer.update(tx, outbox, passed, 'checks_passed', 'system', {
           headSha,
           results,
+          preexisting,
+          baseSha,
         });
-        return { results };
+        return { results, preexisting, baseSha };
       }
 
       // Red. A run that ended with fewer results than commands was cut short: that is not green.
@@ -433,7 +684,7 @@ export class OpenPr {
           recorded.task,
           'checks_failed',
           'system',
-          { headSha, results, attempt: attemptNo, max },
+          { headSha, results, attempt: attemptNo, max, preexisting },
         );
         if (counted.stage === 'Verifying') {
           await deps.writer.move(tx, outbox, counted, 'Implementing', { cause: 'checks_red' });
@@ -445,6 +696,7 @@ export class OpenPr {
             attempt: attemptNo,
             max,
             results,
+            preexisting,
             logPath: relativeLog,
           },
         };
@@ -455,8 +707,12 @@ export class OpenPr {
         results,
         attempt: fresh.counters.checkRetries,
         max,
+        preexisting,
       });
-      const failing = results.filter(isRed).map((r) => r.command);
+      const failing = results
+        .filter(isRed)
+        .map((r) => r.command)
+        .filter((c) => !preexisting.includes(c));
       const reason = `Checks still failing after ${max} retries: ${failing.join(', ') || 'a command was cut short'}`;
       const failed = await deps.writer.move(tx, outbox, fresh, 'Failed', {
         cause: 'checks_exhausted',
@@ -476,10 +732,38 @@ export class OpenPr {
           reason: 'checks_exhausted' as const,
           max,
           results,
+          preexisting,
           logPath: relativeLog,
         },
       };
     });
+  }
+
+  /**
+   * After the base run the worktree must be on the task's commit, clean. Returns what to journal:
+   * the comparison's own error, or a `TREE_NOT_RESTORED` description (which also refuses the call).
+   */
+  private async baseRunLeftTheTree(
+    taskId: string,
+    headSha: string,
+    error: string | null,
+  ): Promise<string | null> {
+    const { branchPublisher } = this.deps;
+    try {
+      const [now, status] = await Promise.all([
+        branchPublisher.headSha(taskId),
+        branchPublisher.status(taskId),
+      ]);
+      if (now !== headSha) {
+        return `${TREE_NOT_RESTORED}: HEAD is ${sha7(now)}, expected ${sha7(headSha)}`;
+      }
+      if (status.dirtyFiles.length > 0) {
+        return `${TREE_NOT_RESTORED}: ${status.dirtyFiles.length} changed file(s)`;
+      }
+    } catch (checkError) {
+      return `${TREE_NOT_RESTORED}: ${checkError instanceof Error ? checkError.message : String(checkError)}`;
+    }
+    return error;
   }
 
   /** After a green gate: the commit and the tree must be exactly what was checked. */
@@ -523,7 +807,8 @@ export class OpenPr {
     readonly task: Task;
     readonly repo: RepoTarget;
     readonly headSha: string;
-    readonly results: readonly CheckResult[];
+    readonly green: GreenGate;
+    readonly skipped: readonly Skipped[];
     readonly status: BranchStatus;
     readonly input: OpenPrInput;
   }): Promise<OpenPrResult> {
@@ -565,7 +850,10 @@ export class OpenPr {
           title: input.input.title ?? '',
           body: pullRequestBody({
             body: input.input.body ?? '',
-            results: input.results,
+            results: input.green.results,
+            preexisting: input.green.preexisting,
+            baseSha: input.green.baseSha,
+            skipped: input.skipped,
             headSha,
             changedFiles: input.status.changedFiles,
           }),
@@ -609,6 +897,30 @@ export class OpenPr {
       const watch = await tx.watches.get(task.id);
       await tx.watches.save(watch?.prNumber === number ? watch : newWatch(task.id, number));
 
+      if (!firstPr && input.green.preexisting.length > 0) {
+        const note: BodyOf<'system'> = {
+          text: `Fails on main too: ${input.green.preexisting.join(', ')}`,
+        };
+        await deps.messages.post(tx, outbox, {
+          threadId: task.threadId,
+          taskId: task.id,
+          kind: 'system',
+          body: note,
+        });
+      }
+
+      if (!firstPr) {
+        for (const { command, reason } of input.skipped) {
+          const note: BodyOf<'system'> = { text: `Skipped locally: ${command} — ${reason}` };
+          await deps.messages.post(tx, outbox, {
+            threadId: task.threadId,
+            taskId: task.id,
+            kind: 'system',
+            body: note,
+          });
+        }
+      }
+
       if (firstPr) {
         const body: BodyOf<'result'> = {
           taskId: task.id,
@@ -625,6 +937,14 @@ export class OpenPr {
       return { ok: true, number, url, headSha, created };
     });
   }
+}
+
+function runEnded(): OpenPrResult {
+  return {
+    ok: false,
+    reason: 'checks_unavailable',
+    detail: 'The run ended while the checks were running; call open_pr again.',
+  };
 }
 
 function stageChanged(task: Task | null, extra = ''): OpenPrResult {

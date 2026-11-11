@@ -2,7 +2,7 @@
 
 Where Jarvis stands, what is done, what is next. Updated as work lands — see the rules at the bottom.
 
-**Last updated:** 2026-11-10 · **Branch:** `main` ·
+**Last updated:** 2026-11-11 · **Branch:** `main` ·
 **uncommitted:** the ui_check hardening below (config gate, disarmed worker, precomputed diff, ADR-0019 rewrite)
 
 Registers this file deliberately does not duplicate:
@@ -20,6 +20,13 @@ and is half-provisioned, and the laptop sleeps mid-task, so the always-on run is
 
 ## Done
 
+- **Checks judged against main** (on branch feat/checks-judged-against-main, not yet deployed): the engine
+  refreshes a task's frozen check list from the remote base's `AGENTS.md` unless its source is `worker`
+  (`checks_fixed {source: 'base_refresh'}`); a red command is re-run on the merge base and, red on both, is
+  "pre-existing" — it does not block `open_pr`, counts no retry and goes under `## Fails on main too`; the
+  worker may pass `open_pr({ skip: [{command, reason}] })` for a command that ran red on the head
+  (`skip_not_allowed` otherwise; `## Checks skipped locally — CI decides`). ADR-0022 amended, worker prompt
+  updated.
 - **Dark redesign of the web UI** (T-3, 2026-11-10): dark-only tokens with an indigo accent, self-hosted
   Inter and JetBrains Mono, a Lucide-based `Icon` component, every screen restyled without changing
   behaviour. The visual language is in `docs/specs/web-ui-design.md`.
@@ -122,6 +129,29 @@ and is half-provisioned, and the laptop sleeps mid-task, so the always-on run is
   gapless 0001–0018, every reference across the repo updated; the former numbering lives in git
   history. AGENTS.md now requires specs and all documentation in English; the Ukrainian specs are being
   translated.
+
+## Deployed 2026-11-11 — repository-agnostic UI check (ADR-0026)
+
+- **The engine knows no target project**: the worker composes an environment plan from the target
+  repository and `start_dev_server({plan})` runs it in disposable Docker containers (`DockerDevServer`
+  replaces `ProcessDevServer`); `ui.devCommand` / `baseUrl` / `readyPath` / `allowedOrigins` / `env` are
+  gone from the config; no literal credential in a plan; new skill `agent/skills/project-knowledge`.
+- **The UI check is mandatory**: `ui.enabled` defaults to true; `open_pr` answers `ui_check_required`
+  for a first PR that touches `ui.paths` without an attempted check; the check also runs in `Fixing`
+  and `PR Open`.
+- **A failed run says why in the thread** (`RunSink`), instead of leaving "worker started" and silence.
+- **On the server**: rootless Docker runs as `jarvis` (linger on, `DOCKER_HOST` in a drop-in of
+  `jarvis-engine`), the retired keys and `~/.jarvis/ui/` are removed, commit `1157245` is live.
+- Verified: unit tests, typecheck, lint; the adapter against a real Docker daemon on the laptop; on
+  the server a rootless container served a loopback port from a read-only mount. **Not verified**: a
+  real worker composing a plan for a real repository; the integration tests (no test database
+  password on the laptop).
+- **After the deploy, same day**: a worker's closing text is posted to the thread (it used to flash in
+  the live view and vanish); the daily budget is counted in tokens (`limits.dailyBudgetTokens`, all
+  token kinds together) because the CLI's dollar figure is a session total, not a run's — a run now
+  records only what it added; three worker slots on the server (2 CPU / 3 GB: watch the memory).
+- Left for later: project records (spec section 3), egress filtering of the check network, neutral
+  repository names in test fixtures.
 
 ## Next
 

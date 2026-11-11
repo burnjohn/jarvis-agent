@@ -21,7 +21,7 @@ describe('first message of a worker run ("Run context")', () => {
         'artifactsDir: /jarvis/tasks/T-1',
         'stage: Context',
         'taskKind: build',
-        'uiCheck: disabled: ui.enabled is false',
+        'uiCheck: available',
         '## Owner preferences (USER.md)',
         'Reply in Ukrainian.',
         '## Task description',
@@ -224,6 +224,54 @@ describe('run exit', () => {
     expect(systemTexts(a, thread.id)).toEqual([
       'The worker of T-1 started — Context.',
       'Run stopped at its limit: max turns reached.',
+    ]);
+  });
+
+  it('posts what the worker said at the end of its turn, so the answer does not vanish', async () => {
+    const a = app();
+    const { taskId, thread } = await createTaskInNewThread(a);
+
+    await a.runner.forTask(taskId)?.exit({ ...result('success'), message: ' PR #40 is ready. \n' });
+
+    const said = a
+      .messagesOf(thread.id)
+      .filter((m) => m.kind === 'jarvis')
+      .map((m) => ({ taskId: m.taskId, text: m.body.text }));
+    expect(said).toEqual([{ taskId, text: 'PR #40 is ready.' }]);
+  });
+
+  it('posts nothing for a turn that ended without text or without success', async () => {
+    const a = app();
+    const { taskId, thread } = await createTaskInNewThread(a);
+
+    await a.runner.forTask(taskId)?.exit({ ...result('error_max_turns'), message: 'max turns' });
+
+    expect(a.messagesOf(thread.id).filter((m) => m.kind === 'jarvis')).toEqual([]);
+  });
+
+  it('records what a run added to the session, not the session total the CLI reports', async () => {
+    const a = app();
+    const { taskId } = await createTaskInNewThread(a);
+    await a.runner.forTask(taskId)?.exit({ ...result('success'), costUsd: 0.5 });
+
+    await a.scheduler.requestWorkerRun(taskId);
+    await a.runner.forTask(taskId)?.exit({ ...result('success'), costUsd: 0.8 });
+
+    const costs = [...a.db.tables.runs.values()].map((run) => Number(run.costUsd.toFixed(2)));
+    expect(costs).toEqual([0.5, 0.3]);
+  });
+
+  it('tells the thread why a run failed', async () => {
+    const a = app();
+    const { taskId, thread } = await createTaskInNewThread(a);
+
+    await a.runner
+      .forTask(taskId)
+      ?.exit({ type: 'exit', code: 1, message: 'claude exited with code 1: not logged in' });
+
+    expect(systemTexts(a, thread.id)).toEqual([
+      'The worker of T-1 started — Context.',
+      'The worker run of T-1 failed: claude exited with code 1: not logged in',
     ]);
   });
 

@@ -72,15 +72,47 @@ export class RunSink implements RunListener {
       const finished = await uow.run(async (tx) => {
         const run = await tx.runs.get(this.live.runId);
         if (run === null || run.status !== 'running') return null;
-        const done = finishRun(run, outcome, clock.now());
+        const finished = finishRun(run, outcome, clock.now());
+        // The CLI reports the cost of the whole session, earlier runs included: a resumed worker
+        // that answers in one turn would otherwise be recorded at the session's full price again.
+        const earlier = (await tx.runs.listBySession(run.sessionId))
+          .filter((other) => other.id !== run.id)
+          .reduce((sum, other) => sum + other.costUsd, 0);
+        const done =
+          outcome.type === 'result'
+            ? { ...finished, costUsd: Math.max(0, finished.costUsd - earlier) }
+            : finished;
         await tx.runs.save(done);
         return done;
       });
-      if (finished !== null) await this.announce(finished);
+      if (finished !== null) {
+        await this.announce(finished);
+        await this.postClosingText(finished, outcome);
+      }
     } finally {
       liveRuns.remove(this.live.runId);
       await onEnded(this.live);
     }
+  }
+
+  /**
+   * What a worker says at the end of its turn is an answer to the owner — a summary, or the reply
+   * to a question asked in the task's thread. The live view shows it while the run streams and
+   * drops it when the run ends, so unless it is posted here the owner sees it flash and vanish.
+   * The dispatcher answers through its `reply` tool and is left alone.
+   */
+  private async postClosingText(run: Run, outcome: RunOutcome): Promise<void> {
+    if (run.role !== 'worker' || run.status !== 'completed' || outcome.type !== 'result') return;
+    const text = outcome.message?.trim() ?? '';
+    if (text === '') return;
+    await transact(this.deps, async (tx, outbox) => {
+      await this.deps.messages.post(tx, outbox, {
+        threadId: run.threadId,
+        taskId: run.taskId,
+        kind: 'jarvis',
+        body: { text },
+      });
+    });
   }
 
   private async announce(run: Run): Promise<void> {
@@ -101,12 +133,11 @@ export class RunSink implements RunListener {
     await notifiers.events.publish({ type: 'run', id: run.id });
     if (run.taskId !== null) await notifiers.events.publish({ type: 'task', id: run.taskId });
     await notifiers.events.publish({ type: 'overview' });
-    if (run.status !== 'limit_reached') return;
+    const text = endNotice(run);
+    if (text === null) return;
     // LIM-03: the owner learns why the work stopped instead of finding a silent thread.
     await transact(this.deps, async (tx, outbox) => {
-      const body: BodyOf<'system'> = {
-        text: `Run stopped at its limit: ${run.error ?? 'limit reached'}.`,
-      };
+      const body: BodyOf<'system'> = { text };
       await messages.post(tx, outbox, {
         threadId: run.threadId,
         taskId: run.taskId,
@@ -115,4 +146,19 @@ export class RunSink implements RunListener {
       });
     });
   }
+}
+
+const NOTICE_REASON_CHARS = 600;
+
+/** What the thread is told when a run ended without finishing its work; `null` when it ended well. */
+function endNotice(run: Run): string | null {
+  if (run.status === 'limit_reached') {
+    return `Run stopped at its limit: ${run.error ?? 'limit reached'}.`;
+  }
+  if (run.status !== 'failed') return null;
+  const reason = (run.error ?? 'no reason reported').replace(/\s+/g, ' ').trim();
+  const shown =
+    reason.length <= NOTICE_REASON_CHARS ? reason : `${reason.slice(0, NOTICE_REASON_CHARS)}…`;
+  const who = run.taskId === null ? 'The dispatcher run' : `The worker run of ${run.taskId}`;
+  return `${who} failed: ${shown}`;
 }
