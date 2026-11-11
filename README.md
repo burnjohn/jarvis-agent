@@ -77,6 +77,25 @@ stateDiagram-v2
 Each stage produces files in the task folder from the templates in [`agent/templates`](agent/templates)
 (`context.md`, `spec.md`, `plan.md`, `tasks.md`, `result.md`), so the work is reviewable at every step.
 
+## Screenshots
+
+Captured from the real engine and web app running with a scripted stand-in for `claude` (the same setup the
+end-to-end tests use), so the data is a demo task, not a real project.
+
+**Chat.** The agent has written a spec and a plan and asks for approval; the card also lists the checks the
+engine will run before it opens the PR.
+
+![Chat: a decision card asks the owner to approve the spec](docs/images/chat-approval.png)
+
+**Task.** The stage timeline, the artifacts of every stage (`context.md`, `spec.md`, `plan.md`, `tasks.md`,
+`result.md`), the branch, the PR, and the cost.
+
+![Task detail: stage timeline and the spec artifact](docs/images/task-detail.png)
+
+**Overview.** Busy workers, queue, what waits for you, open PRs and today's token budget.
+
+![Overview: workers, queue and usage](docs/images/overview.png)
+
 ## What is in it
 
 | Part                            | What it does                                                                                                                                                                       |
