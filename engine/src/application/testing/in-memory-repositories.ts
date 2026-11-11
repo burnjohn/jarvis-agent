@@ -123,6 +123,8 @@ class InMemoryJournalRepository implements JournalRepository {
     this.db.tables.journal.push(event);
   };
   list = async (taskId: string) => this.db.tables.journal.filter((e) => e.taskId === taskId);
+  ofTypesSince = async (types: readonly string[], since: string) =>
+    this.db.tables.journal.filter((e) => types.includes(e.type) && e.at >= since);
 
   /** `seq` is the 1-based position in the journal, like a bigserial. */
   private numbered(): JournalEntry[] {
@@ -168,10 +170,12 @@ class InMemoryRunRepository implements RunRepository {
     const totals = new Map<string, RunTotals>();
     for (const run of this.db.tables.runs.values()) {
       if (run.taskId === null) continue;
-      const known = totals.get(run.taskId) ?? { runCount: 0, costUsd: 0 };
+      const known = totals.get(run.taskId) ?? { runCount: 0, costUsd: 0, tokens: 0 };
+      const { input, output, cacheWrite, cacheRead } = run.usage;
       totals.set(run.taskId, {
         runCount: known.runCount + 1,
         costUsd: known.costUsd + run.costUsd,
+        tokens: known.tokens + input + output + cacheWrite + cacheRead,
       });
     }
     return totals;
