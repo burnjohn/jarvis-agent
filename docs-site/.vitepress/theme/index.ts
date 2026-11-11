@@ -38,11 +38,12 @@ function renderMermaid(): void {
   });
 }
 
+const PENDING = 'pre.mermaid:not([data-processed]):not([data-failed])';
+
 async function renderPending(): Promise<void> {
-  const selector = 'pre.mermaid:not([data-processed])';
-  if (!document.querySelector(selector)) return;
+  if (!document.querySelector(PENDING)) return;
   const mermaid = await loadMermaid();
-  const nodes = Array.from(document.querySelectorAll<HTMLElement>(selector));
+  const nodes = Array.from(document.querySelectorAll<HTMLElement>(PENDING));
   if (nodes.length === 0) return;
   const dark = document.documentElement.classList.contains('dark');
   mermaid.initialize({
@@ -50,11 +51,44 @@ async function renderPending(): Promise<void> {
     securityLevel: 'strict',
     theme: dark ? 'dark' : 'default',
   });
-  await mermaid.run({ nodes });
+  try {
+    await mermaid.run({ nodes });
+  } catch (error) {
+    // Show the source again (it is hidden until drawn, custom.css) rather than an empty block.
+    for (const node of nodes) if (!node.dataset.processed) node.dataset.failed = 'true';
+    throw error;
+  }
+}
+
+/**
+ * Renders as soon as a diagram block is in the page, whatever put it there: the content-updated hook
+ * alone sometimes fired before the hydrated page had its blocks, leaving them undrawn for seconds.
+ */
+function watchForDiagrams(): void {
+  let scheduled = false;
+  new MutationObserver(() => {
+    if (scheduled || !document.querySelector(PENDING)) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      renderMermaid();
+    });
+  }).observe(document.body, { childList: true, subtree: true });
 }
 
 const theme: Theme = {
   extends: DefaultTheme,
+  enhanceApp() {
+    if (!inBrowser) return;
+    // Start fetching Mermaid with the page, not after it has rendered.
+    if (document.querySelector('pre.mermaid')) void loadMermaid().catch(() => undefined);
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', watchForDiagrams, { once: true });
+    } else {
+      watchForDiagrams();
+    }
+    renderMermaid();
+  },
   setup() {
     onContentUpdated(() => {
       renderMermaid();

@@ -8,8 +8,13 @@
   margin: 0;
 }
 
-/* Mermaid diagrams: no code-block background once drawn. */
+/* Mermaid diagrams: no code-block background; the source is hidden until it is drawn (or fails). */
 .vp-doc pre.mermaid {
   background: transparent;
   text-align: center;
+}
+
+.vp-doc pre.mermaid:not([data-processed]):not([data-failed]) {
+  visibility: hidden;
+  min-height: 6rem;
 }
