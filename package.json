@@ -15,15 +15,21 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "deploy": "bash scripts/deploy.sh",
-    "redeploy": "bash scripts/redeploy.sh"
+    "redeploy": "bash scripts/redeploy.sh",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "eslint": "10.13.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.13.0",
+    "mermaid": "11.12.0",
     "prettier": "3.9.10",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.0"
+    "typescript-eslint": "8.72.0",
+    "vitepress": "1.6.4",
+    "vitepress-plugin-mermaid": "2.0.17"
   }
 }

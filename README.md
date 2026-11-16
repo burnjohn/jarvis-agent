@@ -9,7 +9,7 @@ spec and waits for your approval, implements the change in an isolated git workt
 result reviewed and opens a **draft PR**. It then watches CI and review comments and fixes what they report.
 Jarvis never merges; that stays with a human.
 
-[Slides](https://burnjohn.github.io/jarvis-agent/) (Ukrainian) · [Architecture](docs/architecture/README.md) ·
+[Slides](https://burnjohn.github.io/jarvis-agent/) (Ukrainian) · [Docs site](https://burnjohn.github.io/jarvis-agent/docs/) · [Architecture](docs/architecture/README.md) ·
 [Decisions](docs/decisions/architecture/README.md) · [Status](STATUS.md)
 
 ![Jarvis chat: the agent asks the owner to approve a spec before it writes code](docs/images/chat-approval.png)

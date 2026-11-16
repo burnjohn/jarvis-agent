@@ -28,3 +28,7 @@ jarvis.config.json
 # Subagent-driven-development scratch (ledger, briefs, review packages)
 .superpowers/
 !web/.env.remote.example
+
+# VitePress
+docs/.vitepress/cache/
+docs/.vitepress/dist/

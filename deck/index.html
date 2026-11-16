@@ -190,6 +190,10 @@ fx-l::before{content:"";position:absolute;inset:-1px;border-radius:inherit;paddi
 .facts div+div{border-left:1px solid var(--line)}
 .facts b{font-family:var(--f-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .facts span{font-size:20px;line-height:1.3}
+.doclink{position:absolute;top:44px;right:88px;z-index:2;display:inline-flex;align-items:center;gap:12px;padding:14px 22px;border:1px solid var(--line-hi);border-radius:999px;background:var(--surface);-webkit-backdrop-filter:blur(20px) saturate(150%);backdrop-filter:blur(20px) saturate(150%);box-shadow:var(--shadow);color:var(--ink);text-decoration:none;font-family:var(--f-mono);font-size:16px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;transition:var(--tr)}
+.doclink i{font-style:normal;color:var(--agent)}
+.doclink:hover,.doclink:focus-visible{border-color:var(--agent);box-shadow:0 0 0 4px var(--agent-soft),var(--shadow)}
+.slide.active>.doclink{animation:rise 1s var(--ease) .3s backwards}
 .statement{justify-content:center;gap:30px}
 .statement h2{font-size:104px;line-height:.98;letter-spacing:-.055em}
 .statement p{font-size:28px;color:var(--muted);max-width:1100px;line-height:1.4}
@@ -640,6 +644,7 @@ body.qa *,body.qa *::before,body.qa *::after{animation:none!important;transition
     <div><b>Де живе</b><span>Ноутбук або VPS у tailnet</span></div>
     <div><b>Вихід</b><span>Draft PR, merge робить людина</span></div>
   </div>
+  <a class="doclink" href="docs/">Документація проєкту <i>→</i></a>
   <template class="notes">
     <p><b>Відкрити до початку:</b></p>
     <ul><li>UI Jarvis за tailnet-адресою (сторінки Chat, Tasks, Usage, Connections).</li><li>PR #38 у quick-blog: результат першого реального прогону.</li><li>Infisical: тільки список назв змінних. Значення на екран не виводити.</li><li>Термінал на сервері: <code>systemctl status jarvis-engine</code>, <code>ss -tlnp</code>.</li></ul>
