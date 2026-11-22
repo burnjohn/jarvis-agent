@@ -1,7 +1,8 @@
 name: Pages
 
 # One GitHub Pages site (ADR-0029):
-#   /           deck/ — the webinar slides, one static HTML file
+#   /           deck/ — the webinar slides, one static HTML file (Ukrainian)
+#   /en/        deck/en/ — the same slides in English
 #   /docs/      docs/ — every Markdown document in docs/, built with VitePress
 # deck/ and docs/ are deliberately outside lint, format, typecheck and tests.
 on:
@@ -37,6 +38,8 @@ jobs:
         run: |
           mkdir -p _site
           cp deck/index.html _site/
+          mkdir -p _site/en
+          cp deck/en/index.html _site/en/
           cp -R docs/.vitepress/dist _site/docs
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
